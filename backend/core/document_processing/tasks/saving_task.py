@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from backend.core.document_processing.models import Chunk
+from ..models import Chunk
 
 
 class SavingTask:

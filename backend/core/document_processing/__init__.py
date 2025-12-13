@@ -7,12 +7,12 @@ Dependencies: langchain_docling, langchain, langchain_google_genai, pydantic
 System role: Document ingestion pipeline entrypoint
 """
 
-from backend.core.document_processing.configs import (
+from .configs import (
     DocumentPipelineSettings,
     get_pipeline_settings,
 )
-from backend.core.document_processing.entrypoint import DocumentPipeline
-from backend.core.document_processing.models import Chunk, PipelineResult
+from .entrypoint import DocumentPipeline
+from .models import Chunk, PipelineResult
 
 __all__ = [
     "DocumentPipeline",

@@ -3,11 +3,11 @@ Text chunking task using RecursiveCharacterTextSplitter.
 
 Splits documents into retrievable chunks while preserving context.
 
-Dependencies: langchain.text_splitter
+Dependencies: langchain_text_splitters
 System role: Second stage of document ingestion pipeline
 """
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
 

@@ -10,12 +10,12 @@ System role: Pipeline orchestration (coordinates only)
 import time
 import uuid
 
-from backend.core.document_processing.configs import (
+from .configs import (
     DocumentPipelineSettings,
     get_pipeline_settings,
 )
-from backend.core.document_processing.models import PipelineResult
-from backend.core.document_processing.tasks import (
+from .models import PipelineResult
+from .tasks import (
     ChunkingTask,
     EmbeddingTask,
     ParsingTask,

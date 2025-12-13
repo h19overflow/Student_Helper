@@ -9,7 +9,13 @@
       "Bash(Remove-Item -Path \"c:\\Users\\User\\Projects\\Practice_Makes_Perfect\\Legal_Search\\backend\\configs\\celery_config.py\" -Force)",
       "Bash(Remove-Item -Path \"c:\\Users\\User\\Projects\\Practice_Makes_Perfect\\Legal_Search\\backend\\workers\" -Recurse -Force)",
       "Bash(Remove-Item -Path \"c:\\Users\\User\\Projects\\Practice_Makes_Perfect\\Legal_Search\\Dockerfile.worker\" -Force)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(python:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv pip:*)",
+      "Bash(findstr:*)",
+      "Bash(uv run python:*)",
+      "Bash(pip install:*)"
     ]
   }
 }

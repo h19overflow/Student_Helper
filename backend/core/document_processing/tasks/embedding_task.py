@@ -12,8 +12,10 @@ import hashlib
 from langchain_core.documents import Document
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from backend.core.document_processing.models import Chunk
-
+from ..models import Chunk
+from dotenv import load_dotenv  
+import os
+load_dotenv()
 
 class EmbeddingError(Exception):
     """Raised when embedding generation fails."""
@@ -39,11 +41,8 @@ class EmbeddingTask:
         Raises:
             ValueError: When API key is empty
         """
-        if not api_key:
-            raise ValueError("Google API key is required")
-
         self._embeddings = GoogleGenerativeAIEmbeddings(
-            google_api_key=api_key,
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
             model=model,
         )
 

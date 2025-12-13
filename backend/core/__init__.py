@@ -18,7 +18,7 @@ from backend.core.exceptions import (
 )
 
 # Business logic modules
-from backend.core.document_processing import DocumentProcessor
+from backend.core.document_processing import DocumentPipeline
 from backend.core.rag_query import CitationBuilder, Retriever
 from backend.core.session import JobTracker, SessionManager
 # Note: observability module available for LangFuse integration
@@ -36,7 +36,7 @@ __all__ = [
     "ObservabilityError",
     # Business logic
     "CitationBuilder",
-    "DocumentProcessor",
+    "DocumentPipeline",
     "JobTracker",
     "Retriever",
     "SessionManager",

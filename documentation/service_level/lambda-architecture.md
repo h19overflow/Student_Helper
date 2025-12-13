@@ -110,7 +110,7 @@ flowchart TB
         P[Parser]
         C[Chunker]
         EM[Embedder]
-        I[Inserter]
+        VI[VectorIndexer]
     end
 
     subgraph Clients[External Clients]
@@ -124,12 +124,12 @@ flowchart TB
     DL --> P
     P --> C
     C --> EM
-    EM --> I
+    EM --> VI
 
     DL --> S3C
     EM --> GCPC
-    I --> VEC
-    I --> DBC
+    VI --> VEC
+    VI --> DBC
 ```
 
 ## Pipeline Stages
@@ -177,7 +177,7 @@ Extracts job details from SQS event:
 - Calls Google text-embedding-004
 - Handles rate limits with exponential backoff
 
-### 6. Inserter
+### 6. VectorIndexer
 
 - Writes vectors to S3 Vectors with metadata
 - Updates document record in RDS

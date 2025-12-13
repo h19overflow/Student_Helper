@@ -97,9 +97,9 @@ All routes prefixed with `/api/v1`.
 
 | Method | Endpoint | Purpose | Response |
 |--------|----------|---------|----------|
-| POST | `/sessions/{id}/documents` | Upload multiple docs (non-blocking) | `202` Job object |
-| GET | `/sessions/{id}/documents` | List docs in session | `200` Document[] |
-| DELETE | `/sessions/{id}/documents/{doc_id}` | Delete single doc + vectors | `204` No content |
+| POST | `/sessions/{id}/docs` | Upload multiple docs (non-blocking) | `202` Job object |
+| GET | `/sessions/{id}/docs` | List docs in session | `200` Document[] |
+| DELETE | `/sessions/{id}/docs/{doc_id}` | Delete single doc + vectors | `204` No content |
 
 ### Jobs
 
@@ -107,7 +107,7 @@ All routes prefixed with `/api/v1`.
 |--------|----------|---------|----------|
 | GET | `/jobs/{id}` | Get job status | `200` Job object |
 
-**Job States:** `queued` → `processing` → `completed` | `failed`
+**Job States:** `pending` → `running` → `completed` | `failed`
 
 ### Chat / RAG
 
@@ -122,7 +122,9 @@ All routes prefixed with `/api/v1`.
 
 | Method | Endpoint | Purpose | Response |
 |--------|----------|---------|----------|
-| GET | `/health` | Health check for ALB | `200` Health status |
+| GET | `/health` | Basic health check for ALB | `200` Health status |
+| GET | `/health/db` | Database connectivity check | `200` DB status |
+| GET | `/health/vector-store` | Vector store connectivity check | `200` Vector store status |
 
 ## Constraints
 

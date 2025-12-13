@@ -43,18 +43,18 @@ flowchart LR
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Queued: Backend sends message
+    [*] --> Pending: Backend sends message
 
-    Queued --> Invisible: Lambda picks up
+    Pending --> Invisible: Lambda picks up
     note right of Invisible: Visibility timeout (5 min)
 
     Invisible --> Deleted: Processing succeeds
     Deleted --> [*]
 
-    Invisible --> Queued: Processing fails
-    note left of Queued: Retry (up to 3x)
+    Invisible --> Pending: Processing fails
+    note left of Pending: Retry (up to 3x)
 
-    Queued --> DeadLetterQueue: 3 consecutive failures
+    Pending --> DeadLetterQueue: 3 consecutive failures
     DeadLetterQueue --> [*]: Manual investigation
 ```
 
@@ -178,7 +178,7 @@ sequenceDiagram
     U->>API: POST /sessions/{id}/documents
     API->>API: Validate files (size, type)
     API->>S3: Upload files
-    API->>RDS: Create job (status: queued)
+    API->>RDS: Create job (status: pending)
     API->>RDS: Create document records
     API->>SQS: Send message
     API-->>U: 202 Accepted + job_id

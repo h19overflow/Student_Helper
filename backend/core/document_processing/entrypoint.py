@@ -103,3 +103,8 @@ class DocumentPipeline:
             list[PipelineResult]: Results for each document
         """
         return [self.process(path) for path in file_paths]
+
+if __name__ == "__main__":
+    pipeline = DocumentPipeline()
+    result = pipeline.process("Hamza_CV.pdf")
+    print(result)

@@ -1,0 +1,11 @@
+name: student-helper-infra
+runtime:
+  name: python
+  options:
+    virtualenv: ../.venv
+description: AWS infrastructure for Student Helper RAG application
+
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: aws-python

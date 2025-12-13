@@ -22,10 +22,9 @@ flowchart TB
     subgraph AWS[AWS Cloud]
 
         subgraph Edge[Public - Edge Layer]
-            R53[Route53<br/>myapp.com]
             CF[CloudFront]
             S3_FE[S3 Bucket<br/>Frontend Static]
-            APIGW[API Gateway<br/>api.myapp.com]
+            APIGW[API Gateway]
         end
 
         subgraph VPC[VPC 10.0.0.0/16]
@@ -61,8 +60,7 @@ flowchart TB
     end
 
     %% User flows
-    User --> R53
-    R53 --> CF
+    User --> CF
     CF --> S3_FE
     S3_FE -.->|fetch API| APIGW
 
@@ -97,7 +95,6 @@ flowchart TB
 
 | Layer | Subnet | Service | Purpose |
 |-------|--------|---------|---------|
-| Public | - | Route53 | DNS routing |
 | Public | - | CloudFront | CDN for frontend |
 | Public | - | S3 (Frontend) | Static assets |
 | Public | - | API Gateway | API routing via VPC Link |

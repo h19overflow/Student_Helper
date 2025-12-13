@@ -15,7 +15,13 @@
       "Bash(uv pip:*)",
       "Bash(findstr:*)",
       "Bash(uv run python:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(while read file)",
+      "Bash(do python -m py_compile:*)",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(Remove-Item \"c:\\Users\\User\\Projects\\Practice_Makes_Perfect\\Student_Helper\\IAC\\components\\edge\\route53.py\")"
     ]
   }
 }

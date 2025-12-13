@@ -4,7 +4,8 @@
       "Bash(Get-ChildItem -Path . -Recurse -Filter \"*.py\" -File)",
       "Bash(Select-Object -First 30 FullName)",
       "Bash(tree:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(mkdir:*)"
     ]
   }
 }

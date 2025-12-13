@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for application data and chat history
+  postgres:
+    image: postgres:16-alpine
+    container_name: legal-search-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: legal_search
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ for Celery broker
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: legal-search-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Celery result backend
+  redis:
+    image: redis:7-alpine
+    container_name: legal-search-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Langfuse database
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: legal-search-langfuse-db
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_data:/var/lib/postgresql/data
+
+  # Langfuse server for observability
+  langfuse-server:
+    image: langfuse/langfuse:latest
+    container_name: legal-search-langfuse
+    depends_on:
+      - langfuse-db
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: changeme-secret-key
+      NEXTAUTH_URL: http://localhost:3000
+      SALT: changeme-salt
+    ports:
+      - "3000:3000"
+
+  # Celery worker for document ingestion
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: legal-search-celery-worker
+    depends_on:
+      - postgres
+      - rabbitmq
+      - redis
+    environment:
+      POSTGRES_HOST: postgres
+      CELERY_BROKER_HOST: rabbitmq
+      CELERY_RESULT_BACKEND_HOST: redis
+    command: celery -A backend.workers worker --loglevel=info
+
+volumes:
+  postgres_data:
+  langfuse_data:

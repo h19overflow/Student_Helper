@@ -1,7 +1,50 @@
 [project]
 name = "legal-search"
 version = "0.1.0"
-description = "Add your description here"
+description = "Student-focused RAG application with session-based Q&A, async document ingestion, and Mermaid diagram generation"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    # FastAPI Framework
+    "fastapi[standard]>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+
+    # Pydantic
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+
+    # Database
+    "sqlalchemy>=2.0.36",
+    "psycopg2-binary>=2.9.10",
+    "asyncpg>=0.30.0",
+
+    # LangChain & LangGraph
+    "langchain>=0.3.11",
+    "langchain-community>=0.3.10",
+    "langchain-google-genai>=2.0.8",
+    "langgraph>=0.2.60",
+    "langchain-aws>=0.2.10",
+
+    # Document Processing
+    "docling>=2.15.2",
+
+    # Vector Store & AWS
+    "boto3>=1.35.81",
+
+    # Celery & Message Queue
+    "celery[amqp]>=5.4.0",
+    "kombu>=5.4.2",
+
+    # Observability & Evaluation
+    "langfuse>=2.56.2",
+    "ragas>=0.2.11",
+
+    # Utilities
+    "python-multipart>=0.0.20",
+    "python-jose[cryptography]>=3.3.0",
+    "structlog>=24.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

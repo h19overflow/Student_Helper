@@ -159,3 +159,9 @@ Strictly require citations for diagram claims vs allow “conceptual diagram” 
 Evaluation cadence:
 
 Nightly batch eval via Celery vs manual “run eval” endpoint using the same evaluate() pipeline.​
+
+
+
+
+
+

@@ -17,7 +17,14 @@ from backend.core.exceptions import (
     ObservabilityError,
 )
 
+# Business logic modules
+from backend.core.document_processing import DocumentProcessor
+from backend.core.rag_query import CitationBuilder, Retriever
+from backend.core.session import JobTracker, SessionManager
+# Note: observability module available for LangFuse integration
+
 __all__ = [
+    # Exceptions
     "LegalSearchException",
     "ValidationError",
     "SessionNotFoundError",
@@ -27,4 +34,10 @@ __all__ = [
     "VectorStoreError",
     "RetrievalError",
     "ObservabilityError",
+    # Business logic
+    "CitationBuilder",
+    "DocumentProcessor",
+    "JobTracker",
+    "Retriever",
+    "SessionManager",
 ]

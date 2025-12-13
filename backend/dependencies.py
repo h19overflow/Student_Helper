@@ -12,11 +12,13 @@ from sqlalchemy.orm import Session
 
 from backend.configs import Settings, get_settings
 from backend.boundary.db import get_db
-from backend.application.session_service import SessionService
-from backend.application.document_service import DocumentService
-from backend.application.job_service import JobService
-from backend.application.retrieval_service import RetrievalService
-from backend.application.diagram_service import DiagramService
+from backend.application.services import (
+    DiagramService,
+    DocumentService,
+    JobService,
+    RetrievalService,
+    SessionService,
+)
 
 
 @lru_cache

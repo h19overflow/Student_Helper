@@ -1,8 +1,8 @@
 """
 Job ORM model.
 
-Tracks Celery task execution for async operations (ingestion, evaluation).
-Provides job status and progress reporting.
+Tracks Lambda task execution for async operations (ingestion, evaluation).
+Provides job status and progress reporting via SQS message correlation.
 
 Dependencies: sqlalchemy, backend.boundary.db.base
 System role: Async job tracking for background tasks
@@ -33,11 +33,11 @@ class JobStatus(str, enum.Enum):
 
 class JobModel(Base, UUIDMixin, TimestampMixin):
     """
-    Job ORM model for Celery task tracking.
+    Job ORM model for Lambda task tracking.
 
     Attributes:
         id: UUID primary key
-        task_id: Celery task ID
+        task_id: SQS message ID for Lambda correlation
         type: Job type enum
         status: Job status enum
         progress: Progress percentage (0-100)
@@ -52,7 +52,7 @@ class JobModel(Base, UUIDMixin, TimestampMixin):
         String(255),
         nullable=False,
         unique=True,
-        doc="Celery task ID for correlation",
+        doc="SQS message ID for Lambda correlation",
     )
 
     type: Mapped[JobType] = mapped_column(

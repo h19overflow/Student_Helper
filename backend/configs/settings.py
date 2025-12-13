@@ -13,7 +13,6 @@ from functools import lru_cache
 from backend.configs.base import BaseSettings
 from backend.configs.database import DatabaseSettings
 from backend.configs.vector_store import VectorStoreSettings
-from backend.configs.celery_config import CelerySettings
 from backend.configs.observability import ObservabilitySettings
 
 
@@ -23,7 +22,6 @@ class Settings(BaseSettings):
     # Aggregated settings
     database: DatabaseSettings = DatabaseSettings()
     vector_store: VectorStoreSettings = VectorStoreSettings()
-    celery: CelerySettings = CelerySettings()
     observability: ObservabilitySettings = ObservabilitySettings()
 
 

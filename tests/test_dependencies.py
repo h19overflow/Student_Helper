@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.dependencies import (
+from backend.api.deps import (
     get_chat_service,
     get_document_service,
     get_job_service,
@@ -44,9 +44,9 @@ class TestGetChatService:
     ) -> None:
         """Test get_chat_service returns ChatService instance."""
         # Arrange
-        with patch("backend.dependencies.get_db", return_value=mock_db_session), patch(
-            "backend.dependencies.FAISSStore"
-        ), patch("backend.dependencies.RAGAgent"):
+        with patch("backend.api.deps.dependencies.get_db", return_value=mock_db_session), patch(
+            "backend.api.deps.dependencies.FAISSStore"
+        ), patch("backend.api.deps.dependencies.RAGAgent"):
             # Act
             service = get_chat_service(db=mock_db_session)
 
@@ -58,10 +58,10 @@ class TestGetChatService:
     ) -> None:
         """Test get_chat_service initializes ChatService with db and RAGAgent."""
         # Arrange
-        with patch("backend.dependencies.get_db", return_value=mock_db_session), patch(
-            "backend.dependencies.FAISSStore"
+        with patch("backend.api.deps.dependencies.get_db", return_value=mock_db_session), patch(
+            "backend.api.deps.dependencies.FAISSStore"
         ) as mock_faiss_class, patch(
-            "backend.dependencies.RAGAgent"
+            "backend.api.deps.dependencies.RAGAgent"
         ) as mock_rag_agent_class:
             mock_faiss_instance = MagicMock()
             mock_faiss_class.return_value = mock_faiss_instance
@@ -81,10 +81,10 @@ class TestGetChatService:
     ) -> None:
         """Test get_chat_service creates FAISSStore with correct params."""
         # Arrange
-        with patch("backend.dependencies.get_db", return_value=mock_db_session), patch(
-            "backend.dependencies.FAISSStore"
+        with patch("backend.api.deps.dependencies.get_db", return_value=mock_db_session), patch(
+            "backend.api.deps.dependencies.FAISSStore"
         ) as mock_faiss_class, patch(
-            "backend.dependencies.RAGAgent"
+            "backend.api.deps.dependencies.RAGAgent"
         ):
             mock_faiss_instance = MagicMock()
             mock_faiss_class.return_value = mock_faiss_instance
@@ -104,10 +104,10 @@ class TestGetChatService:
     ) -> None:
         """Test get_chat_service creates RAGAgent with correct params."""
         # Arrange
-        with patch("backend.dependencies.get_db", return_value=mock_db_session), patch(
-            "backend.dependencies.FAISSStore"
+        with patch("backend.api.deps.dependencies.get_db", return_value=mock_db_session), patch(
+            "backend.api.deps.dependencies.FAISSStore"
         ) as mock_faiss_class, patch(
-            "backend.dependencies.RAGAgent"
+            "backend.api.deps.dependencies.RAGAgent"
         ) as mock_rag_agent_class:
             mock_faiss_instance = MagicMock()
             mock_faiss_class.return_value = mock_faiss_instance
@@ -133,8 +133,8 @@ class TestGetDocumentService:
         """Test get_document_service returns DocumentService instance."""
         # Arrange
         with patch(
-            "backend.dependencies.get_db", return_value=mock_db_session
-        ), patch("backend.dependencies.DevDocumentPipeline"):
+            "backend.api.deps.dependencies.get_db", return_value=mock_db_session
+        ), patch("backend.api.deps.dependencies.DevDocumentPipeline"):
             # Act
             service = get_document_service(db=mock_db_session)
 
@@ -147,8 +147,8 @@ class TestGetDocumentService:
         """Test get_document_service initializes with DevDocumentPipeline."""
         # Arrange
         with patch(
-            "backend.dependencies.get_db", return_value=mock_db_session
-        ), patch("backend.dependencies.DevDocumentPipeline") as mock_pipeline_class:
+            "backend.api.deps.dependencies.get_db", return_value=mock_db_session
+        ), patch("backend.api.deps.dependencies.DevDocumentPipeline") as mock_pipeline_class:
             mock_pipeline_instance = MagicMock()
             mock_pipeline_class.return_value = mock_pipeline_instance
 
@@ -164,9 +164,9 @@ class TestGetDocumentService:
         """Test get_document_service creates pipeline with correct params."""
         # Arrange
         with patch(
-            "backend.dependencies.get_db", return_value=mock_db_session
+            "backend.api.deps.dependencies.get_db", return_value=mock_db_session
         ), patch(
-            "backend.dependencies.DevDocumentPipeline"
+            "backend.api.deps.dependencies.DevDocumentPipeline"
         ) as mock_pipeline_class:
             # Act
             get_document_service(db=mock_db_session)
@@ -187,7 +187,7 @@ class TestGetJobService:
     ) -> None:
         """Test get_job_service returns JobService instance."""
         # Arrange
-        with patch("backend.dependencies.get_db", return_value=mock_db_session):
+        with patch("backend.api.deps.dependencies.get_db", return_value=mock_db_session):
             # Act
             service = get_job_service(db=mock_db_session)
 
@@ -199,7 +199,7 @@ class TestGetJobService:
     ) -> None:
         """Test get_job_service initializes with database session."""
         # Arrange
-        with patch("backend.dependencies.get_db", return_value=mock_db_session):
+        with patch("backend.api.deps.dependencies.get_db", return_value=mock_db_session):
             # Act
             service = get_job_service(db=mock_db_session)
 
@@ -215,7 +215,7 @@ class TestGetSessionService:
     ) -> None:
         """Test get_session_service returns SessionService instance."""
         # Arrange
-        with patch("backend.dependencies.get_db", return_value=mock_db_session):
+        with patch("backend.api.deps.dependencies.get_db", return_value=mock_db_session):
             # Act
             service = get_session_service(db=mock_db_session)
 
@@ -227,7 +227,7 @@ class TestGetSessionService:
     ) -> None:
         """Test get_session_service initializes with database session."""
         # Arrange
-        with patch("backend.dependencies.get_db", return_value=mock_db_session):
+        with patch("backend.api.deps.dependencies.get_db", return_value=mock_db_session):
             # Act
             service = get_session_service(db=mock_db_session)
 

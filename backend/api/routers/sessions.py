@@ -15,12 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.application.services.chat_service import ChatService
 from backend.application.services.diagram_service import DiagramService
 from backend.application.services.session_service import SessionService
-from backend.boundary.db import get_db
-from backend.dependencies import (
+from backend.api.deps import (
     get_chat_service,
     get_diagram_service,
     get_session_service,
 )
+from backend.boundary.db import get_db
 from backend.models.chat import ChatRequest, ChatResponse
 from backend.models.citation import Citation
 

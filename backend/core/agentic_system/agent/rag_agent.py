@@ -135,3 +135,14 @@ class RAGAgent:
         result = await self._agent.ainvoke({"messages": messages})
 
         return result["structured_response"]
+
+if __name__ == "__main__":
+    from backend.boundary.vdb.faiss_store import FAISSStore
+    from backend.core.agentic_system.agent.rag_agent import RAGAgent
+    from backend.core.agentic_system.agent.rag_agent_prompt import register_rag_prompt
+    from backend.core.agentic_system.agent.rag_agent_tool import create_search_tool
+
+    vector_store = FAISSStore()
+    agent = RAGAgent(vector_store)
+    result = agent.invoke("What does hamza do , and how many projects does he have?")
+    print(result)

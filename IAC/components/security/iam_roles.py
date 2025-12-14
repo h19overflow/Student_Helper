@@ -119,6 +119,17 @@ class IamRolesComponent(pulumi.ComponentResource):
                         ],
                         "Resource": ["arn:aws:logs:*:*:*"],
                     },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "bedrock:InvokeModel",
+                            "bedrock:InvokeModelWithResponseStream",
+                        ],
+                        "Resource": [
+                            "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-*",
+                            "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+                        ],
+                    },
                 ],
             }),
             opts=child_opts,
@@ -178,6 +189,15 @@ class IamRolesComponent(pulumi.ComponentResource):
                             "secretsmanager:GetSecretValue",
                         ],
                         "Resource": ["arn:aws:secretsmanager:*:*:secret:*"],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "bedrock:InvokeModel",
+                        ],
+                        "Resource": [
+                            "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0",
+                        ],
                     },
                 ],
             }),

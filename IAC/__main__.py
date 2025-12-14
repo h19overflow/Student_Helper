@@ -27,6 +27,7 @@ from IAC.components.security.secrets_manager import SecretsManagerComponent
 # Storage
 from IAC.components.storage.s3_buckets import S3BucketsComponent
 from IAC.components.storage.rds_postgres import RdsPostgresComponent
+from IAC.components.storage.ecr_repository import EcrRepositoryComponent
 
 # Messaging
 from IAC.components.messaging.sqs_queues import SqsQueuesComponent
@@ -81,6 +82,12 @@ def main() -> None:
         namer=namer,
     )
     s3_outputs = s3_buckets.get_outputs()
+
+    ecr_repository = EcrRepositoryComponent(
+        name=base_name,
+        environment=config.environment,
+    )
+    ecr_outputs = ecr_repository.get_outputs()
 
     sqs_queues = SqsQueuesComponent(
         name=base_name,
@@ -155,9 +162,11 @@ def main() -> None:
     pulumi.export("ec2_instance_id", ec2_outputs.instance_id)
     pulumi.export("ec2_private_ip", ec2_outputs.private_ip)
     pulumi.export("lambda_function_name", lambda_outputs.function_name)
+    pulumi.export("lambda_ecr_repository", ecr_outputs.repository_url)
     pulumi.export("rds_endpoint", rds_outputs.endpoint)
     pulumi.export("documents_bucket", s3_outputs.documents_bucket_name)
     pulumi.export("vectors_bucket", s3_outputs.vectors_bucket_name)
+    pulumi.export("vectors_index", s3_outputs.vectors_index_name)
     pulumi.export("frontend_bucket", s3_outputs.frontend_bucket_name)
     pulumi.export("sqs_queue_url", sqs_outputs.queue_url)
     pulumi.export("api_endpoint", api_outputs.api_endpoint)

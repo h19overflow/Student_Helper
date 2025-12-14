@@ -1,17 +1,18 @@
 """
-S3 buckets component for object storage.
+Storage buckets component for documents and vectors.
 
 Creates:
-- Documents bucket: Uploaded PDFs with versioning
-- Vectors bucket: Vector embeddings storage
-- Frontend bucket: Static website assets
+- Documents bucket (S3): Uploaded PDFs with versioning
+- Vectors bucket (S3 Vectors): Native vector embeddings storage
+- Vectors index: 3072-dim cosine index for text-embedding-004
+- Frontend bucket (S3): Static website assets
 """
 
 from dataclasses import dataclass
 
 import pulumi
 import pulumi_aws as aws
-import pulumi_aws_native 
+import pulumi_aws_native as aws_native
 from IAC.utils.tags import create_tags
 from IAC.utils.naming import ResourceNamer
 
@@ -23,6 +24,8 @@ class S3BucketOutputs:
     documents_bucket_arn: pulumi.Output[str]
     vectors_bucket_name: pulumi.Output[str]
     vectors_bucket_arn: pulumi.Output[str]
+    vectors_index_name: pulumi.Output[str]
+    vectors_index_arn: pulumi.Output[str]
     frontend_bucket_name: pulumi.Output[str]
     frontend_bucket_arn: pulumi.Output[str]
     frontend_website_endpoint: pulumi.Output[str]
@@ -74,24 +77,31 @@ class S3BucketsComponent(pulumi.ComponentResource):
             )],
             opts=child_opts,
         )
-        # TODO: Wrong , this should be an S3vectors bucket not a regular s3 bucket.
-        # Vectors bucket (embeddings)
-        self.vectors_bucket = aws.s3.BucketV2(
+        # S3 Vectors bucket for embeddings storage
+        self.vectors_bucket = aws_native.s3vectors.VectorBucket(
             f"{name}-vectors",
-            bucket=namer.bucket_name("vectors"),
-            tags=create_tags(environment, f"{name}-vectors"),
+            vector_bucket_name=namer.bucket_name("vectors"),
+            encryption_configuration=aws_native.s3vectors.VectorBucketEncryptionConfigurationArgs(
+                sse_type="AES256",
+            ),
             opts=child_opts,
         )
 
-        aws.s3.BucketServerSideEncryptionConfigurationV2(
-            f"{name}-vectors-encryption",
-            bucket=self.vectors_bucket.id,
-            rules=[aws.s3.BucketServerSideEncryptionConfigurationV2RuleArgs(
-                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationV2RuleApplyServerSideEncryptionByDefaultArgs(
-                    sse_algorithm="AES256",
-                ),
-            )],
-            opts=child_opts,
+        # Vector index for document embeddings
+        # Dimension 1536 matches Amazon Titan Embeddings v2
+        # text_content stored as non-filterable (large context, not for queries)
+        # Filterable by default: document_id, session_id, page_number, chunk_index
+        self.vectors_index = aws_native.s3vectors.Index(
+            f"{name}-vectors-index",
+            vector_bucket_name=self.vectors_bucket.vector_bucket_name,
+            index_name="documents",
+            dimension=1536,
+            data_type="float32",
+            distance_metric="cosine",
+            metadata_configuration=aws_native.s3vectors.IndexMetadataConfigurationArgs(
+                non_filterable_metadata_keys=["text_content"],
+            ),
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[self.vectors_bucket]),
         )
 
         # Frontend bucket (static assets)
@@ -114,26 +124,24 @@ class S3BucketsComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
-        # Block public access on documents and vectors buckets
-        for bucket_name, bucket in [
-            ("documents", self.documents_bucket),
-            ("vectors", self.vectors_bucket),
-        ]:
-            aws.s3.BucketPublicAccessBlock(
-                f"{name}-{bucket_name}-public-block",
-                bucket=bucket.id,
-                block_public_acls=True,
-                block_public_policy=True,
-                ignore_public_acls=True,
-                restrict_public_buckets=True,
-                opts=child_opts,
-            )
+        # Block public access on documents bucket
+        aws.s3.BucketPublicAccessBlock(
+            f"{name}-documents-public-block",
+            bucket=self.documents_bucket.id,
+            block_public_acls=True,
+            block_public_policy=True,
+            ignore_public_acls=True,
+            restrict_public_buckets=True,
+            opts=child_opts,
+        )
 
         self.register_outputs({
             "documents_bucket_name": self.documents_bucket.bucket,
             "documents_bucket_arn": self.documents_bucket.arn,
-            "vectors_bucket_name": self.vectors_bucket.bucket,
-            "vectors_bucket_arn": self.vectors_bucket.arn,
+            "vectors_bucket_name": self.vectors_bucket.vector_bucket_name,
+            "vectors_bucket_arn": self.vectors_bucket.vector_bucket_arn,
+            "vectors_index_name": self.vectors_index.index_name,
+            "vectors_index_arn": self.vectors_index.index_arn,
             "frontend_bucket_name": self.frontend_bucket.bucket,
             "frontend_bucket_arn": self.frontend_bucket.arn,
         })
@@ -143,8 +151,10 @@ class S3BucketsComponent(pulumi.ComponentResource):
         return S3BucketOutputs(
             documents_bucket_name=self.documents_bucket.bucket,
             documents_bucket_arn=self.documents_bucket.arn,
-            vectors_bucket_name=self.vectors_bucket.bucket,
-            vectors_bucket_arn=self.vectors_bucket.arn,
+            vectors_bucket_name=self.vectors_bucket.vector_bucket_name,
+            vectors_bucket_arn=self.vectors_bucket.vector_bucket_arn,
+            vectors_index_name=self.vectors_index.index_name,
+            vectors_index_arn=self.vectors_index.index_arn,
             frontend_bucket_name=self.frontend_bucket.bucket,
             frontend_bucket_arn=self.frontend_bucket.arn,
             frontend_website_endpoint=self.frontend_bucket.bucket_regional_domain_name,

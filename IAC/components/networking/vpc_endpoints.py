@@ -73,8 +73,22 @@ class VpcEndpointsComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
+        # Bedrock Runtime Interface Endpoint
+        self.bedrock_endpoint = aws.ec2.VpcEndpoint(
+            f"{name}-bedrock-endpoint",
+            vpc_id=vpc_id,
+            service_name=f"com.amazonaws.{region.name}.bedrock-runtime",
+            vpc_endpoint_type="Interface",
+            subnet_ids=subnet_ids,
+            security_group_ids=[security_group_id],
+            private_dns_enabled=True,
+            tags=create_tags(environment, f"{name}-bedrock-endpoint"),
+            opts=child_opts,
+        )
+
         self.register_outputs({
             "s3_endpoint_id": self.s3_endpoint.id,
             "sqs_endpoint_id": self.sqs_endpoint.id,
             "secrets_endpoint_id": self.secrets_endpoint.id,
+            "bedrock_endpoint_id": self.bedrock_endpoint.id,
         })

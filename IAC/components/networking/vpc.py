@@ -23,7 +23,6 @@ class VpcOutputs:
     private_subnet_id: pulumi.Output[str]
     lambda_subnet_id: pulumi.Output[str]
     data_subnet_id: pulumi.Output[str]
-    nat_gateway_id: pulumi.Output[str]
 
 
 class VpcComponent(pulumi.ComponentResource):
@@ -72,26 +71,6 @@ class VpcComponent(pulumi.ComponentResource):
             map_public_ip_on_launch=True,
             tags=create_tags(environment, f"{name}-public-subnet"),
             opts=child_opts,
-        )
-
-        # Create Elastic IP for NAT Gateway
-        self.nat_eip = aws.ec2.Eip(
-            f"{name}-nat-eip",
-            domain="vpc",
-            tags=create_tags(environment, f"{name}-nat-eip"),
-            opts=child_opts,
-        )
-
-        # Create NAT Gateway
-        self.nat_gateway = aws.ec2.NatGateway(
-            f"{name}-nat-gw",
-            allocation_id=self.nat_eip.id,
-            subnet_id=self.public_subnet.id,
-            tags=create_tags(environment, f"{name}-nat-gw"),
-            opts=pulumi.ResourceOptions(
-                parent=self,
-                depends_on=[self.igw],
-            ),
         )
 
         # Create private subnets
@@ -159,21 +138,17 @@ class VpcComponent(pulumi.ComponentResource):
             opts=opts,
         )
 
-        # Private route table (NAT Gateway)
+        # Private route table (VPC-only routing)
+        # All external access (Bedrock, etc.) goes through VPC Endpoints
         private_rt = aws.ec2.RouteTable(
             f"{name}-private-rt",
             vpc_id=self.vpc.id,
-            routes=[
-                aws.ec2.RouteTableRouteArgs(
-                    cidr_block="0.0.0.0/0",
-                    nat_gateway_id=self.nat_gateway.id,
-                ),
-            ],
+            routes=[],  # No default internet route - VPC Endpoints only
             tags=create_tags(self.environment, f"{name}-private-rt"),
             opts=opts,
         )
 
-        # Associate private subnets with NAT route table
+        # Associate private subnets with private route table
         for subnet_name, subnet in [
             ("private", self.private_subnet),
             ("lambda", self.lambda_subnet),
@@ -193,5 +168,4 @@ class VpcComponent(pulumi.ComponentResource):
             private_subnet_id=self.private_subnet.id,
             lambda_subnet_id=self.lambda_subnet.id,
             data_subnet_id=self.data_subnet.id,
-            nat_gateway_id=self.nat_gateway.id,
         )

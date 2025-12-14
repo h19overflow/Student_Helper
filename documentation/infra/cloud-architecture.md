@@ -14,11 +14,6 @@ flowchart TB
         User[👤 User]
     end
 
-    subgraph External[External APIs]
-        GCP[Google Cloud<br/>text-embedding-004]
-        Anthropic[Anthropic API<br/>Claude]
-    end
-
     subgraph AWS[AWS Cloud]
 
         subgraph Edge[Public - Edge Layer]
@@ -45,6 +40,7 @@ flowchart TB
                 S3_EP[S3 Gateway Endpoint]
                 SQS_EP[SQS Interface Endpoint]
                 Secrets_EP[Secrets Manager Endpoint]
+                Bedrock_EP[Bedrock Runtime Endpoint]
             end
 
         end
@@ -55,14 +51,15 @@ flowchart TB
             SQS[SQS Queue]
             DLQ[SQS DLQ]
             Secrets[Secrets Manager]
+            ECR[ECR Repository<br/>Lambda Images]
         end
 
     end
 
     %% User flows
-    User --> CF
-    CF --> S3_FE
-    S3_FE -.->|fetch API| APIGW
+    User -->|HTTPS| CF
+    CF -->|serves static| S3_FE
+    S3_FE -.->|fetch /api calls| APIGW
 
     %% API Gateway to backend
     APIGW -->|VPC Link| EC2
@@ -71,14 +68,15 @@ flowchart TB
     EC2 --> S3_EP
     EC2 --> SQS_EP
     EC2 --> Secrets_EP
+    EC2 --> Bedrock_EP
     EC2 --> RDS
-    EC2 -->|completions| Anthropic
 
     %% Lambda connections
     Lambda --> S3_EP
     Lambda --> Secrets_EP
+    Lambda --> Bedrock_EP
     Lambda --> RDS
-    Lambda -->|embeddings| GCP
+    Lambda -.->|pulls image| ECR
 
     %% VPC Endpoints to services
     S3_EP --> S3_Docs
@@ -86,6 +84,7 @@ flowchart TB
     SQS_EP --> SQS
     SQS --> DLQ
     Secrets_EP --> Secrets
+    Bedrock_EP -.->|AWS Bedrock| AWS[AWS Bedrock Service]
 
     %% SQS triggers Lambda
     SQS -->|trigger| Lambda
@@ -104,16 +103,18 @@ flowchart TB
 | VPC | Endpoints | S3 Gateway | Private S3 access |
 | VPC | Endpoints | SQS Interface | Private SQS access |
 | VPC | Endpoints | Secrets Manager | Private secrets access |
+| VPC | Endpoints | Bedrock Runtime | Private Bedrock access |
 | Private AWS | - | S3 (Documents) | Uploaded PDFs |
 | Private AWS | - | S3 Vectors | Vector embeddings |
 | Private AWS | - | SQS + DLQ | Job queue |
 | Private AWS | - | Secrets Manager | API keys |
+| Private AWS | - | ECR Repository | Lambda container images (up to 10GB) |
 
 ## Security Groups
 
 | Security Group | Inbound | Outbound |
 |----------------|---------|----------|
-| sg-backend | 8000 from API Gateway VPC Link | RDS, Endpoints, Anthropic API |
-| sg-lambda | SQS trigger (AWS managed) | RDS, Endpoints, Google API |
+| sg-backend | 8000 from API Gateway VPC Link | RDS, Endpoints, Bedrock API |
+| sg-lambda | SQS trigger (AWS managed) | RDS, Endpoints, Bedrock API |
 | sg-database | 5432 from sg-backend, sg-lambda | None |
 | sg-endpoints | 443 from sg-backend, sg-lambda | AWS Services |

@@ -29,6 +29,13 @@ SYSTEM_PROMPT = """You are a helpful study assistant that answers questions base
 4. Be concise but thorough in your explanations
 5. If multiple sources support your answer, cite all of them
 
+## Conversation History
+If provided, recent conversation history shows context for the current question.
+Use this to:
+- Understand follow-up questions that reference previous messages
+- Maintain conversational coherence
+- Avoid repeating information already discussed
+
 ## Context Format
 Each context chunk includes:
 - chunk_id: Unique identifier (use this for citations)
@@ -46,7 +53,9 @@ Each context chunk includes:
 
 RAG_AGENT_PROMPT = ChatPromptTemplate.from_messages([
     ("system", SYSTEM_PROMPT),
-    ("human", """Context:
+    ("human", """{chat_history}
+
+Context:
 {context}
 
 Question: {question}

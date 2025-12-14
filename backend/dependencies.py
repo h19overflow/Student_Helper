@@ -8,17 +8,20 @@ System role: DI container for service injection
 """
 
 from functools import lru_cache
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.configs import Settings, get_settings
 from backend.boundary.db import get_db
 from backend.application.services import (
+    ChatService,
     DiagramService,
     DocumentService,
     JobService,
-    RetrievalService,
     SessionService,
 )
+from backend.boundary.vdb.faiss_store import FAISSStore
+from backend.boundary.vdb.dev_task import DevDocumentPipeline
+from backend.core.agentic_system.agent.rag_agent import RAGAgent
 
 
 @lru_cache
@@ -27,7 +30,7 @@ def get_settings_dependency() -> Settings:
     return get_settings()
 
 
-def get_session_service(db: Session = get_db()) -> SessionService:
+def get_session_service(db: AsyncSession = get_db()) -> SessionService:
     """
     Get session service instance.
 
@@ -37,10 +40,10 @@ def get_session_service(db: Session = get_db()) -> SessionService:
     Returns:
         SessionService: Session service instance
     """
-    pass
+    return SessionService(db=db)
 
 
-def get_document_service(db: Session = get_db()) -> DocumentService:
+def get_document_service(db: AsyncSession = get_db()) -> DocumentService:
     """
     Get document service instance.
 
@@ -48,12 +51,17 @@ def get_document_service(db: Session = get_db()) -> DocumentService:
         db: Database session
 
     Returns:
-        DocumentService: Document service instance
+        DocumentService: Document service instance with DevDocumentPipeline
     """
-    pass
+    dev_pipeline = DevDocumentPipeline(
+        chunk_size=1000,
+        chunk_overlap=200,
+        persist_directory=".faiss_index",
+    )
+    return DocumentService(db=db, dev_pipeline=dev_pipeline)
 
 
-def get_job_service(db: Session = get_db()) -> JobService:
+def get_job_service(db: AsyncSession = get_db()) -> JobService:
     """
     Get job service instance.
 
@@ -63,17 +71,35 @@ def get_job_service(db: Session = get_db()) -> JobService:
     Returns:
         JobService: Job service instance
     """
-    pass
+    return JobService(db=db)
 
 
-def get_retrieval_service() -> RetrievalService:
+def get_chat_service(db: AsyncSession = get_db()) -> ChatService:
     """
-    Get retrieval service instance.
+    Get chat service instance with RAG agent.
+
+    Args:
+        db: Database session
 
     Returns:
-        RetrievalService: Retrieval service instance
+        ChatService: Chat service with configured RAG agent
     """
-    pass
+    # Create vector store
+    vector_store = FAISSStore(
+        persist_directory=".faiss_index",
+        model_id="amazon.titan-embed-text-v2:0",
+        region="us-east-1",
+    )
+
+    # Create RAG agent
+    rag_agent = RAGAgent(
+        vector_store=vector_store,
+        model_id="global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        region="ap-southeast-2",
+        temperature=0.0,
+    )
+
+    return ChatService(db=db, rag_agent=rag_agent)
 
 
 def get_diagram_service() -> DiagramService:
@@ -83,4 +109,4 @@ def get_diagram_service() -> DiagramService:
     Returns:
         DiagramService: Diagram service instance
     """
-    pass
+    return DiagramService()

@@ -12,6 +12,7 @@ System role: RAG Q&A agent orchestration
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 from langchain_aws import ChatBedrockConverse
+from langchain_core.messages import BaseMessage
 
 from backend.boundary.vdb.faiss_store import FAISSStore
 from backend.core.agentic_system.agent.rag_agent_prompt import (
@@ -78,13 +79,19 @@ class RAGAgent:
                 labels=[prompt_label] if prompt_label else None,
             )
 
-    def invoke(self, question: str, session_id: str | None = None) -> RAGResponse:
+    def invoke(
+        self,
+        question: str,
+        session_id: str | None = None,
+        chat_history: list[BaseMessage] | None = None,
+    ) -> RAGResponse:
         """
         Answer a question using RAG retrieval.
 
         Args:
             question: User's question
             session_id: Optional session ID for filtering
+            chat_history: Optional conversation history for context
 
         Returns:
             RAGResponse: Structured response with answer and citations
@@ -96,9 +103,19 @@ class RAGAgent:
 
         context = self._search_tool.invoke({"query": question, "k": 5})
 
+        # Format chat history if provided
+        history_text = ""
+        if chat_history:
+            formatted_messages = [
+                f"{'User' if msg.type == 'human' else 'Assistant'}: {msg.content}"
+                for msg in chat_history
+            ]
+            history_text = "Previous Conversation:\n" + "\n".join(formatted_messages) + "\n"
+
         messages = prompt.invoke({
             "context": context,
             "question": question,
+            "chat_history": history_text,
         }).to_messages()
 
         result = self._agent.invoke({"messages": messages})
@@ -109,6 +126,7 @@ class RAGAgent:
         self,
         question: str,
         session_id: str | None = None,
+        chat_history: list[BaseMessage] | None = None,
     ) -> RAGResponse:
         """
         Async version of invoke.
@@ -116,6 +134,7 @@ class RAGAgent:
         Args:
             question: User's question
             session_id: Optional session ID for filtering
+            chat_history: Optional conversation history for context
 
         Returns:
             RAGResponse: Structured response with answer and citations
@@ -127,9 +146,19 @@ class RAGAgent:
 
         context = await self._search_tool.ainvoke({"query": question, "k": 5})
 
+        # Format chat history if provided
+        history_text = ""
+        if chat_history:
+            formatted_messages = [
+                f"{'User' if msg.type == 'human' else 'Assistant'}: {msg.content}"
+                for msg in chat_history
+            ]
+            history_text = "Previous Conversation:\n" + "\n".join(formatted_messages) + "\n"
+
         messages = prompt.invoke({
             "context": context,
             "question": question,
+            "chat_history": history_text,
         }).to_messages()
 
         result = await self._agent.ainvoke({"messages": messages})

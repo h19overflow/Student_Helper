@@ -7,7 +7,8 @@ Dependencies: backend.boundary.vdb, backend.core.exceptions
 System role: RAG retrieval business logic
 """
 
-from backend.boundary.vdb import VectorStoreClient, VectorQuery, VectorSearchResult
+from backend.boundary.vdb.vector_store_client import VectorStoreClient
+from backend.boundary.vdb.vector_schemas import VectorQuery, VectorSearchResult
 import uuid
 
 

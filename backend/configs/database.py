@@ -8,7 +8,7 @@ Dependencies: pydantic, pydantic_settings
 System role: Database connection configuration for ORM
 """
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 

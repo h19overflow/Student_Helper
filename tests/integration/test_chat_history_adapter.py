@@ -463,7 +463,8 @@ class TestChatHistoryAdapterGetMessagesAsDicts:
 
             # Assert
             assert len(result) == 2
-            mock_get.assert_called_once_with(limit=2)
+            # get_messages is called with positional limit argument
+            mock_get.assert_called_once_with(2)
 
     @pytest.mark.asyncio
     async def test_get_messages_as_dicts_should_return_empty_list_when_no_messages(
@@ -574,13 +575,16 @@ class TestChatHistoryAdapterMessageTypes:
     ) -> None:
         """Test adapter handles HumanMessage type correctly."""
         # Arrange
-        with patch.object(
-            chat_history_adapter, "add_user_message", new_callable=AsyncMock
-        ):
+        with patch(
+            "backend.application.adapters.chat_history_adapter.chat_history_crud"
+        ) as mock_crud:
+            mock_crud.add_user_message = AsyncMock()
+
             # Act
             await chat_history_adapter.add_message("user", "Hello")
 
-            # Assert - no exception should be raised
+            # Assert - should call add_user_message without exception
+            mock_crud.add_user_message.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_add_message_with_ai_messages(
@@ -588,13 +592,16 @@ class TestChatHistoryAdapterMessageTypes:
     ) -> None:
         """Test adapter handles AIMessage type correctly."""
         # Arrange
-        with patch.object(
-            chat_history_adapter, "add_ai_message", new_callable=AsyncMock
-        ):
+        with patch(
+            "backend.application.adapters.chat_history_adapter.chat_history_crud"
+        ) as mock_crud:
+            mock_crud.add_ai_message = AsyncMock()
+
             # Act
             await chat_history_adapter.add_message("ai", "Hi there")
 
-            # Assert - no exception should be raised
+            # Assert - should call add_ai_message without exception
+            mock_crud.add_ai_message.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_messages_as_dicts_should_use_message_type_attribute(

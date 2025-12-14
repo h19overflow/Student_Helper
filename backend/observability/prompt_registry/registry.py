@@ -13,8 +13,9 @@ from typing import TYPE_CHECKING
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langfuse import Langfuse
 
+import logging
+
 from backend.configs import get_settings
-from backend.observability.logger import get_logger
 from backend.observability.prompt_registry.converter import (
     convert_chat_template,
     convert_text_template,
@@ -24,7 +25,7 @@ from backend.observability.prompt_registry.models import ModelConfig
 if TYPE_CHECKING:
     from langfuse.api.resources.prompts.types import Prompt
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class PromptRegistry:
@@ -85,7 +86,7 @@ class PromptRegistry:
             host=obs_settings.langfuse_host,
         )
         self._enabled = True
-        logger.info("Prompt registry initialized", host=obs_settings.langfuse_host)
+        logger.info("Prompt registry initialized: host=%s", obs_settings.langfuse_host)
 
     @property
     def is_enabled(self) -> bool:
@@ -118,7 +119,7 @@ class PromptRegistry:
             ValueError: If template type is unsupported
         """
         if not self._enabled or self._client is None:
-            logger.debug("Prompt registry disabled, skipping registration", name=name)
+            logger.debug("Prompt registry disabled, skipping registration: name=%s", name)
             return None
 
         labels = labels or []
@@ -134,10 +135,8 @@ class PromptRegistry:
                 labels=labels,
             )
             logger.info(
-                "Registered chat prompt",
-                name=name,
-                version=prompt.version,
-                labels=labels,
+                "Registered chat prompt: name=%s version=%s labels=%s",
+                name, prompt.version, labels,
             )
             return prompt
 
@@ -151,10 +150,8 @@ class PromptRegistry:
                 labels=labels,
             )
             logger.info(
-                "Registered text prompt",
-                name=name,
-                version=prompt.version,
-                labels=labels,
+                "Registered text prompt: name=%s version=%s labels=%s",
+                name, prompt.version, labels,
             )
             return prompt
 
@@ -178,7 +175,7 @@ class PromptRegistry:
             Prompt: Langfuse prompt object, or None if disabled/not found
         """
         if not self._enabled or self._client is None:
-            logger.debug("Prompt registry disabled, cannot fetch", name=name)
+            logger.debug("Prompt registry disabled, cannot fetch: name=%s", name)
             return None
 
         kwargs: dict = {"name": name}
@@ -189,9 +186,8 @@ class PromptRegistry:
 
         prompt = self._client.get_prompt(**kwargs)
         logger.debug(
-            "Fetched prompt",
-            name=name,
-            version=prompt.version if prompt else None,
+            "Fetched prompt: name=%s version=%s",
+            name, prompt.version if prompt else None,
         )
         return prompt
 

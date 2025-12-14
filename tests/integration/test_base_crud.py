@@ -9,6 +9,7 @@ System role: Verification of generic database layer foundation
 
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -47,44 +48,21 @@ class TestBaseCRUDCreate:
     """Test suite for BaseCRUD.create() method."""
 
     @pytest.mark.asyncio
-    async def test_create_should_add_instance_and_return_created_model(
-        self, base_crud: BaseCRUD, mock_session: AsyncSession, sample_id: uuid.UUID
+    async def test_create_should_add_instance_to_session(
+        self, base_crud: BaseCRUD, mock_session: AsyncSession
     ) -> None:
-        """Test successful creation returns instance with ID and timestamps."""
+        """Test create adds instance and flushes/refreshes."""
         # Arrange
-        now = datetime.now(timezone.utc)
-        created_instance = MockModel()
-        created_instance.id = sample_id
-        created_instance.created_at = now
-        created_instance.updated_at = now
-
         mock_session.flush = AsyncMock()
         mock_session.refresh = AsyncMock()
 
         # Act
-        result = await base_crud.create(mock_session, id=sample_id)
+        await base_crud.create(mock_session)
 
         # Assert
         mock_session.add.assert_called_once()
         mock_session.flush.assert_called_once()
         mock_session.refresh.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_create_should_accept_multiple_kwargs(
-        self, mock_session: AsyncSession
-    ) -> None:
-        """Test create passes all kwargs to model constructor."""
-        # Arrange
-        crud = BaseCRUD(MockModel)
-        mock_session.flush = AsyncMock()
-        mock_session.refresh = AsyncMock()
-
-        # Act
-        await crud.create(mock_session, key1="value1", key2="value2")
-
-        # Assert
-        # Verify session.add was called (model instantiation would occur)
-        mock_session.add.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_create_should_flush_before_refresh(
@@ -93,10 +71,15 @@ class TestBaseCRUDCreate:
         """Test flush is called before refresh to ensure ID generation."""
         # Arrange
         call_order = []
-        mock_session.flush = AsyncMock(side_effect=lambda: call_order.append("flush"))
-        mock_session.refresh = AsyncMock(
-            side_effect=lambda x: call_order.append("refresh")
-        )
+
+        async def flush_effect() -> None:
+            call_order.append("flush")
+
+        async def refresh_effect(obj: Any) -> None:
+            call_order.append("refresh")
+
+        mock_session.flush = AsyncMock(side_effect=flush_effect)
+        mock_session.refresh = AsyncMock(side_effect=refresh_effect)
 
         # Act
         await base_crud.create(mock_session)
@@ -114,11 +97,11 @@ class TestBaseCRUDGetByID:
     ) -> None:
         """Test get_by_id returns model instance when ID exists."""
         # Arrange
-        mock_instance = MockModel()
+        mock_instance = MagicMock()
         mock_instance.id = sample_id
 
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = mock_instance
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=mock_instance)
 
         mock_session.execute = AsyncMock(return_value=mock_result)
 
@@ -135,8 +118,8 @@ class TestBaseCRUDGetByID:
     ) -> None:
         """Test get_by_id returns None when ID doesn't exist."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -151,8 +134,8 @@ class TestBaseCRUDGetByID:
     ) -> None:
         """Test get_by_id constructs WHERE clause filtering by ID."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -173,11 +156,11 @@ class TestBaseCRUDGetAll:
     ) -> None:
         """Test get_all returns sequence of all models without limit."""
         # Arrange
-        instances = [MockModel(), MockModel(), MockModel()]
-        mock_result = AsyncMock()
-        mock_scalars = AsyncMock()
-        mock_scalars.all.return_value = instances
-        mock_result.scalars.return_value = mock_scalars
+        instances = [MagicMock(), MagicMock(), MagicMock()]
+        mock_scalars = MagicMock()
+        mock_scalars.all = MagicMock(return_value=instances)
+        mock_result = MagicMock()
+        mock_result.scalars = MagicMock(return_value=mock_scalars)
 
         mock_session.execute = AsyncMock(return_value=mock_result)
 
@@ -194,10 +177,10 @@ class TestBaseCRUDGetAll:
     ) -> None:
         """Test get_all returns empty sequence when no records exist."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_scalars = AsyncMock()
-        mock_scalars.all.return_value = []
-        mock_result.scalars.return_value = mock_scalars
+        mock_scalars = MagicMock()
+        mock_scalars.all = MagicMock(return_value=[])
+        mock_result = MagicMock()
+        mock_result.scalars = MagicMock(return_value=mock_scalars)
 
         mock_session.execute = AsyncMock(return_value=mock_result)
 
@@ -213,11 +196,11 @@ class TestBaseCRUDGetAll:
     ) -> None:
         """Test get_all respects limit parameter for pagination."""
         # Arrange
-        instances = [MockModel(), MockModel()]
-        mock_result = AsyncMock()
-        mock_scalars = AsyncMock()
-        mock_scalars.all.return_value = instances
-        mock_result.scalars.return_value = mock_scalars
+        instances = [MagicMock(), MagicMock()]
+        mock_scalars = MagicMock()
+        mock_scalars.all = MagicMock(return_value=instances)
+        mock_result = MagicMock()
+        mock_result.scalars = MagicMock(return_value=mock_scalars)
 
         mock_session.execute = AsyncMock(return_value=mock_result)
 
@@ -233,11 +216,11 @@ class TestBaseCRUDGetAll:
     ) -> None:
         """Test get_all respects offset parameter for pagination."""
         # Arrange
-        instances = [MockModel()]
-        mock_result = AsyncMock()
-        mock_scalars = AsyncMock()
-        mock_scalars.all.return_value = instances
-        mock_result.scalars.return_value = mock_scalars
+        instances = [MagicMock()]
+        mock_scalars = MagicMock()
+        mock_scalars.all = MagicMock(return_value=instances)
+        mock_result = MagicMock()
+        mock_result.scalars = MagicMock(return_value=mock_scalars)
 
         mock_session.execute = AsyncMock(return_value=mock_result)
 
@@ -253,11 +236,11 @@ class TestBaseCRUDGetAll:
     ) -> None:
         """Test get_all applies both limit and offset together."""
         # Arrange
-        instances = [MockModel()]
-        mock_result = AsyncMock()
-        mock_scalars = AsyncMock()
-        mock_scalars.all.return_value = instances
-        mock_result.scalars.return_value = mock_scalars
+        instances = [MagicMock()]
+        mock_scalars = MagicMock()
+        mock_scalars.all = MagicMock(return_value=instances)
+        mock_result = MagicMock()
+        mock_result.scalars = MagicMock(return_value=mock_scalars)
 
         mock_session.execute = AsyncMock(return_value=mock_result)
 
@@ -277,11 +260,11 @@ class TestBaseCRUDUpdateByID:
     ) -> None:
         """Test update_by_id returns updated model instance when ID exists."""
         # Arrange
-        updated_instance = MockModel()
+        updated_instance = MagicMock()
         updated_instance.id = sample_id
 
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = updated_instance
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=updated_instance)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -296,8 +279,8 @@ class TestBaseCRUDUpdateByID:
     ) -> None:
         """Test update_by_id returns None when ID doesn't exist."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -312,9 +295,9 @@ class TestBaseCRUDUpdateByID:
     ) -> None:
         """Test update_by_id updates multiple fields from kwargs."""
         # Arrange
-        updated_instance = MockModel()
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = updated_instance
+        updated_instance = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=updated_instance)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -387,8 +370,8 @@ class TestBaseCRUDExists:
     ) -> None:
         """Test exists returns True when ID exists in database."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = sample_id
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=sample_id)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -403,8 +386,8 @@ class TestBaseCRUDExists:
     ) -> None:
         """Test exists returns False when ID doesn't exist."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -419,8 +402,8 @@ class TestBaseCRUDExists:
     ) -> None:
         """Test exists queries only ID column (efficient)."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = sample_id
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=sample_id)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act

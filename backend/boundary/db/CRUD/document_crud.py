@@ -14,7 +14,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.boundary.db.document_model import DocumentModel, DocumentStatus
+from backend.boundary.db.models.document_model import DocumentModel, DocumentStatus
 from backend.boundary.db.CRUD.base_crud import BaseCRUD
 
 

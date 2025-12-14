@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.boundary.db.session_model import SessionModel
+from backend.boundary.db.models.session_model import SessionModel
 from backend.boundary.db.CRUD.base_crud import BaseCRUD
 
 

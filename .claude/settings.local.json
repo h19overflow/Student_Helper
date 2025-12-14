@@ -25,7 +25,13 @@
       "Bash(python -m pip install:*)",
       "Bash(python architecture_diagram.py:*)",
       "Bash(python vpc_endpoints_detailed_diagram.py:*)",
-      "Bash(python vpc_link_detailed_diagram.py:*)"
+      "Bash(python vpc_link_detailed_diagram.py:*)",
+      "Bash(python -c:*)",
+      "Bash(ls -la \"C:\\Users\\User\\Projects\\Practice_Makes_Perfect\\Student_Helper\\tests\\integration\"\" 2>/dev/null || echo \"Integration directory does not exist \")",
+      "Bash(python -m pytest tests/integration/test_base_crud.py -v --tb=short)",
+      "Bash(uv pip list:*)",
+      "Bash(mv:*)",
+      "Bash(python -m pytest:*)"
     ]
   }
 }

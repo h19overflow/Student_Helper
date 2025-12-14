@@ -14,7 +14,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.boundary.db.job_model import JobModel, JobStatus, JobType
+from backend.boundary.db.models.job_model import JobModel, JobStatus, JobType
 from backend.boundary.db.CRUD.base_crud import BaseCRUD
 
 

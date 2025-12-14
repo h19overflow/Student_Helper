@@ -14,9 +14,9 @@ from backend.boundary.db.base import Base
 from backend.boundary.db.connection import get_engine
 
 # Import all models to register them with Base.metadata
-from backend.boundary.db.session_model import SessionModel  # noqa: F401
-from backend.boundary.db.document_model import DocumentModel  # noqa: F401
-from backend.boundary.db.job_model import JobModel  # noqa: F401
+from backend.boundary.db.models.session_model import SessionModel  # noqa: F401
+from backend.boundary.db.models.document_model import DocumentModel  # noqa: F401
+from backend.boundary.db.models.job_model import JobModel  # noqa: F401
 
 
 def create_all_tables() -> None:

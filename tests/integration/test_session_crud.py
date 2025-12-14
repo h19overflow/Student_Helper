@@ -9,13 +9,13 @@ System role: Verification of session persistence layer
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.boundary.db.CRUD.session_crud import SessionCRUD
-from backend.boundary.db.session_model import SessionModel
+from backend.boundary.db.models.session_model import SessionModel
 
 
 @pytest.fixture
@@ -73,8 +73,8 @@ class TestSessionCRUDGetWithDocuments:
     ) -> None:
         """Test get_with_documents returns session with eager-loaded documents."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = mock_session_model
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=mock_session_model)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -94,8 +94,8 @@ class TestSessionCRUDGetWithDocuments:
     ) -> None:
         """Test get_with_documents returns None when session doesn't exist."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -113,8 +113,8 @@ class TestSessionCRUDGetWithDocuments:
     ) -> None:
         """Test get_with_documents uses selectinload option for documents."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -138,8 +138,8 @@ class TestSessionCRUDGetAllWithDocuments:
         """Test get_all_with_documents returns all sessions with eager-loaded docs."""
         # Arrange
         sessions = [mock_session_model]
-        mock_result = AsyncMock()
-        mock_scalars = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
         mock_scalars.all.return_value = sessions
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute = AsyncMock(return_value=mock_result)
@@ -157,8 +157,8 @@ class TestSessionCRUDGetAllWithDocuments:
     ) -> None:
         """Test get_all_with_documents returns empty sequence when no sessions."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_scalars = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
         mock_scalars.all.return_value = []
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute = AsyncMock(return_value=mock_result)
@@ -179,8 +179,8 @@ class TestSessionCRUDGetAllWithDocuments:
         """Test get_all_with_documents respects limit parameter."""
         # Arrange
         sessions = [mock_session_model]
-        mock_result = AsyncMock()
-        mock_scalars = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
         mock_scalars.all.return_value = sessions
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute = AsyncMock(return_value=mock_result)
@@ -201,8 +201,8 @@ class TestSessionCRUDGetAllWithDocuments:
         """Test get_all_with_documents respects offset parameter."""
         # Arrange
         sessions = [mock_session_model]
-        mock_result = AsyncMock()
-        mock_scalars = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
         mock_scalars.all.return_value = sessions
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute = AsyncMock(return_value=mock_result)
@@ -225,8 +225,8 @@ class TestSessionCRUDGetAllWithDocuments:
         """Test get_all_with_documents applies both limit and offset together."""
         # Arrange
         sessions = [mock_session_model]
-        mock_result = AsyncMock()
-        mock_scalars = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
         mock_scalars.all.return_value = sessions
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute = AsyncMock(return_value=mock_result)
@@ -257,8 +257,8 @@ class TestSessionCRUDUpdateMetadata:
         updated_session = mock_session_model
         updated_session.session_metadata = new_metadata
 
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = updated_session
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=updated_session)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -279,8 +279,8 @@ class TestSessionCRUDUpdateMetadata:
     ) -> None:
         """Test update_metadata returns None when session doesn't exist."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -301,8 +301,8 @@ class TestSessionCRUDUpdateMetadata:
     ) -> None:
         """Test update_metadata accepts empty metadata dictionary."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = mock_session_model
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=mock_session_model)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -326,8 +326,8 @@ class TestSessionCRUDUpdateMetadata:
             "preferences": {"theme": "dark", "notifications": True},
             "tags": ["tag1", "tag2"],
         }
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = mock_session_model
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=mock_session_model)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -371,8 +371,8 @@ class TestSessionCRUDInheritance:
     ) -> None:
         """Test SessionCRUD inherits get_by_id method from BaseCRUD."""
         # Arrange
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -390,7 +390,7 @@ class TestSessionCRUDInheritance:
     ) -> None:
         """Test SessionCRUD inherits delete_by_id method from BaseCRUD."""
         # Arrange
-        mock_result = AsyncMock()
+        mock_result = MagicMock()
         mock_result.rowcount = 1
         mock_session.execute = AsyncMock(return_value=mock_result)
 

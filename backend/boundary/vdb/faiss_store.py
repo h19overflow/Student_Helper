@@ -64,6 +64,7 @@ class FAISSStore:
                 str(self._persist_dir),
                 self._embeddings,
                 allow_dangerous_deserialization=True,
+                normalize_L2=True,
             )
 
     def add_documents(
@@ -91,7 +92,7 @@ class FAISSStore:
             doc.metadata["doc_id"] = doc_id or str(uuid.uuid4())
 
         if self._index is None:
-            self._index = FAISS.from_documents(documents, self._embeddings)
+            self._index = FAISS.from_documents(documents, self._embeddings, normalize_L2=True)
         else:
             self._index.add_documents(documents)
 
@@ -148,7 +149,7 @@ class FAISSStore:
                         section=metadata.get("section"),
                         source_uri=metadata.get("source", ""),
                     ),
-                    similarity_score=float(1 - score),
+                    similarity_score=float(score),
                 )
             )
 

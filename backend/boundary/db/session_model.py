@@ -35,7 +35,7 @@ class SessionModel(Base, UUIDMixin, TimestampMixin):
 
     __tablename__ = "sessions"
 
-    metadata: Mapped[dict] = mapped_column(
+    session_metadata: Mapped[dict] = mapped_column(
         JSON,
         nullable=False,
         default=dict,

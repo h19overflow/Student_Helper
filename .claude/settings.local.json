@@ -21,7 +21,11 @@
       "Bash(do python -m py_compile:*)",
       "Bash(echo:*)",
       "Bash(done)",
-      "Bash(Remove-Item \"c:\\Users\\User\\Projects\\Practice_Makes_Perfect\\Student_Helper\\IAC\\components\\edge\\route53.py\")"
+      "Bash(Remove-Item \"c:\\Users\\User\\Projects\\Practice_Makes_Perfect\\Student_Helper\\IAC\\components\\edge\\route53.py\")",
+      "Bash(python -m pip install:*)",
+      "Bash(python architecture_diagram.py:*)",
+      "Bash(python vpc_endpoints_detailed_diagram.py:*)",
+      "Bash(python vpc_link_detailed_diagram.py:*)"
     ]
   }
 }

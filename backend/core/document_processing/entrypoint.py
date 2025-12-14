@@ -19,7 +19,7 @@ from .tasks import (
     ChunkingTask,
     EmbeddingTask,
     ParsingTask,
-    SavingTask,
+    VectorStoreTask,
 )
 
 
@@ -41,17 +41,19 @@ class DocumentPipeline:
             chunk_overlap=self._settings.chunk_overlap,
         )
         self._embedding_task = EmbeddingTask(
-            api_key=self._settings.google_api_key,
-            model=self._settings.embedding_model,
+            model_id=self._settings.embedding_model_id,
+            region=self._settings.bedrock_region,
         )
-        self._saving_task = SavingTask(
-            output_directory=self._settings.output_directory,
+        self._vector_store_task = VectorStoreTask(
+            vectors_bucket=self._settings.vectors_bucket,
+            region=self._settings.bedrock_region,
         )
 
     def process(
         self,
         file_path: str,
         document_id: str | None = None,
+        session_id: str | None = None,
     ) -> PipelineResult:
         """
         Process document through full pipeline.
@@ -59,6 +61,7 @@ class DocumentPipeline:
         Args:
             file_path: Path to document file
             document_id: Optional document ID (generated if None)
+            session_id: Optional session ID (required for S3 Vectors)
 
         Returns:
             PipelineResult: Processing result with chunk count and output path
@@ -70,6 +73,7 @@ class DocumentPipeline:
         """
         start_time = time.perf_counter()
         doc_id = document_id or str(uuid.uuid4())
+        sess_id = session_id or str(uuid.uuid4())
 
         # Parse document
         documents = self._parsing_task.parse(file_path)
@@ -80,8 +84,9 @@ class DocumentPipeline:
         # Generate embeddings
         chunks = self._embedding_task.embed(chunked_documents)
 
-        # Save to local JSON
-        output_path = self._saving_task.save(chunks, doc_id)
+        # Upload to S3 Vectors (TODO: implement upload logic)
+        self._vector_store_task.upload(chunks, doc_id, sess_id)
+        output_path = f"s3vectors://{self._settings.vectors_bucket}/{doc_id}"
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 

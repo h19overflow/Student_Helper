@@ -1,21 +1,19 @@
 """
-Embedding generation task using Google Gemini.
+Embedding generation task using Amazon Bedrock Titan Embeddings v2.
 
-Generates vector embeddings for document chunks.
+Generates vector embeddings for document chunks (1536 dimensions).
 
-Dependencies: langchain_google_genai, hashlib
+Dependencies: langchain_aws, hashlib
 System role: Third stage of document ingestion pipeline
 """
 
 import hashlib
 
 from langchain_core.documents import Document
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_aws import BedrockEmbeddings
 
 from ..models import Chunk
-from dotenv import load_dotenv  
-import os
-load_dotenv()
+
 
 class EmbeddingError(Exception):
     """Raised when embedding generation fails."""
@@ -24,26 +22,30 @@ class EmbeddingError(Exception):
 
 
 class EmbeddingTask:
-    """Generate embeddings using Google Gemini."""
+    """Generate embeddings using Amazon Titan Embeddings v2."""
 
     def __init__(
         self,
-        api_key: str,
-        model: str = "models/gemini-embedding-001",
+        model_id: str = "amazon.titan-embed-text-v2:0",
+        region: str = "us-east-1",
     ) -> None:
         """
-        Initialize embedding task with Google credentials.
+        Initialize embedding task with Bedrock credentials.
 
         Args:
-            api_key: Google API key
-            model: Embedding model name
+            model_id: Bedrock model ID (Titan v2 = 1536 dimensions)
+            region: AWS region
 
         Raises:
-            ValueError: When API key is empty
+            ValueError: When model_id is empty
         """
-        self._embeddings = GoogleGenerativeAIEmbeddings(
-            google_api_key=os.getenv("GOOGLE_API_KEY"),
-            model=model,
+        if not model_id:
+            raise ValueError("model_id cannot be empty")
+
+        # TODO: Configure Bedrock credentials via environment or IAM role
+        self._embeddings = BedrockEmbeddings(
+            model_id=model_id,
+            region_name=region,
         )
 
     def embed(self, documents: list[Document]) -> list[Chunk]:

@@ -16,14 +16,21 @@ from backend.boundary.db.base import Base, UUIDMixin, TimestampMixin
 
 class SessionModel(Base, UUIDMixin, TimestampMixin):
     """
-    Session ORM model.
+    Session ORM model for isolating chat and document scope.
+
+    Each session represents a user conversation context. Documents are
+    scoped to sessions to ensure RAG retrieval only uses relevant documents.
+    Cascade delete ensures orphaned documents are cleaned up.
 
     Attributes:
-        id: UUID primary key
-        metadata: JSONB field for flexible session metadata
-        documents: Relationship to documents in this session
-        created_at: Timestamp of session creation
-        updated_at: Timestamp of last session update
+        id: UUID primary key (auto-generated)
+        metadata: JSONB field storing session-specific data (user, preferences, tags)
+        documents: List of DocumentModel rows for this session (cascading delete)
+        created_at: Session creation timestamp (UTC)
+        updated_at: Last modification timestamp (UTC)
+
+    Relationships:
+        documents: One-to-many with DocumentModel (cascade delete on session removal)
     """
 
     __tablename__ = "sessions"

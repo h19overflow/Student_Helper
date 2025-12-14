@@ -1,11 +1,15 @@
 """
-Database boundary layer.
+Database boundary layer: ORM models and connection management.
 
-Provides SQLAlchemy ORM models, database connection management,
-and session factory for PostgreSQL operations.
+Exports:
+  - Base, UUIDMixin, TimestampMixin: Model building blocks
+  - get_engine(), get_session_factory(), get_db(): Connection management
+  - SessionModel, DocumentModel, JobModel: Core domain entities
+  - JobStatus, JobType, DocumentStatus: Enum types for state tracking
 
 Dependencies: sqlalchemy, backend.configs
-System role: Database adapter for persistence layer
+System role: Database adapter providing persistent storage for sessions,
+documents, and background jobs with auto-lifecycle management.
 """
 
 from backend.boundary.db.base import Base, TimestampMixin, UUIDMixin

@@ -22,16 +22,26 @@ class DocumentPipelineSettings(BaseSettings):
         extra="ignore",
     )
 
-    # Google API settings
+    # Google API settings (DEPRECATED - use Bedrock instead)
     google_api_key: str = Field(
         default="",
-        description="Google API key for Gemini embeddings",
+        description="Google API key for Gemini embeddings (deprecated)",
     )
 
-    # Embedding settings
+    # Embedding settings (DEPRECATED - use Bedrock instead)
     embedding_model: str = Field(
         default="models/gemini-embedding-001",
-        description="Google Gemini embedding model name",
+        description="Google Gemini embedding model name (deprecated)",
+    )
+
+    # AWS Bedrock settings
+    bedrock_region: str = Field(
+        default="us-east-1",
+        description="AWS region for Bedrock",
+    )
+    embedding_model_id: str = Field(
+        default="amazon.titan-embed-text-v2:0",
+        description="Amazon Titan Embeddings v2 model ID (1536 dimensions)",
     )
 
     # Chunking settings
@@ -44,10 +54,22 @@ class DocumentPipelineSettings(BaseSettings):
         description="Overlap between consecutive chunks",
     )
 
-    # Output settings
+    # S3 Vectors settings
+    vectors_bucket: str = Field(
+        default="",
+        description="S3 Vectors bucket name",
+    )
+
+    # Database settings (for RDS status updates)
+    database_url: str = Field(
+        default="",
+        description="PostgreSQL connection string",
+    )
+
+    # Output settings (DEPRECATED - use S3 Vectors instead)
     output_directory: str = Field(
         default="./data/processed",
-        description="Directory for local JSON output",
+        description="Directory for local JSON output (deprecated)",
     )
 
 

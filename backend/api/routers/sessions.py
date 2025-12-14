@@ -10,7 +10,6 @@ System role: Session HTTP API
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.application.services.chat_service import ChatService
 from backend.application.services.diagram_service import DiagramService

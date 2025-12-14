@@ -1,16 +1,16 @@
 """
-Document parsing task using Docling.
+Document parsing task using LangChain PyPDFLoader.
 
-Converts PDF, DOCX, and other document formats into LangChain Documents.
+Converts PDF documents into LangChain Documents.
 
-Dependencies: langchain_docling
+Dependencies: langchain_community.document_loaders
 System role: First stage of document ingestion pipeline
 """
 
 from pathlib import Path
 
 from langchain_core.documents import Document
-from langchain_docling import DoclingLoader
+from langchain_community.document_loaders import PyPDFLoader
 
 
 class ParsingError(Exception):
@@ -22,23 +22,23 @@ class ParsingError(Exception):
 
 
 class ParsingTask:
-    """Parse documents into LangChain Documents using Docling."""
+    """Parse PDF documents into LangChain Documents."""
 
     def __init__(self, export_type: str = "markdown") -> None:
         """
         Initialize parsing task.
 
         Args:
-            export_type: Export format - "markdown" or "doc_chunks"
+            export_type: Export format (deprecated, kept for compatibility)
         """
         self._export_type = export_type
 
     def parse(self, file_path: str) -> list[Document]:
         """
-        Parse document file into LangChain Documents.
+        Parse PDF document into LangChain Documents.
 
         Args:
-            file_path: Path to document (local path or URL)
+            file_path: Path to PDF document
 
         Returns:
             list[Document]: Parsed documents with content and metadata
@@ -50,12 +50,22 @@ class ParsingTask:
         if not path.exists():
             raise ParsingError(f"File not found: {file_path}", file_path)
 
-        try:
-            loader = DoclingLoader(
-                file_path=file_path,
-                export_type=self._export_type,
+        if not path.suffix.lower() == ".pdf":
+            raise ParsingError(
+                f"Unsupported file format: {path.suffix}. Only PDF files are supported.",
+                file_path,
             )
+
+        try:
+            loader = PyPDFLoader(file_path)
             documents = loader.load()
+
+            if not documents:
+                raise ParsingError("PDF document contains no extractable text", file_path)
+
             return documents
+
+        except ParsingError:
+            raise
         except Exception as e:
-            raise ParsingError(f"Failed to parse document: {e}", file_path) from e
+            raise ParsingError(f"Failed to parse PDF: {e}", file_path) from e

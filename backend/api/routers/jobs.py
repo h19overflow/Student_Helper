@@ -10,11 +10,9 @@ System role: Job status HTTP API
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_job_service
 from backend.application.services.job_service import JobService
-from backend.boundary.db import get_db
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 

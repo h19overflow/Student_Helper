@@ -8,20 +8,18 @@ System role: DI container for service injection
 """
 
 from functools import lru_cache
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import Depends
+from sqlalchemy.orm import Session
 
 from backend.configs import Settings, get_settings
 from backend.boundary.db import get_db
 from backend.application.services import (
-    ChatService,
     DiagramService,
     DocumentService,
     JobService,
     SessionService,
 )
-from backend.boundary.vdb.faiss_store import FAISSStore
-from backend.boundary.vdb.dev_task import DevDocumentPipeline
-from backend.core.agentic_system.agent.rag_agent import RAGAgent
 
 
 @lru_cache
@@ -30,12 +28,12 @@ def get_settings_dependency() -> Settings:
     return get_settings()
 
 
-def get_session_service(db: AsyncSession = get_db()) -> SessionService:
+def get_session_service(db: Session = Depends(get_db)) -> SessionService:
     """
     Get session service instance.
 
     Args:
-        db: Database session
+        db: Database session (injected via Depends)
 
     Returns:
         SessionService: Session service instance
@@ -43,16 +41,18 @@ def get_session_service(db: AsyncSession = get_db()) -> SessionService:
     return SessionService(db=db)
 
 
-def get_document_service(db: AsyncSession = get_db()) -> DocumentService:
+def get_document_service(db: Session = Depends(get_db)) -> DocumentService:
     """
     Get document service instance.
 
     Args:
-        db: Database session
+        db: Database session (injected via Depends)
 
     Returns:
         DocumentService: Document service instance with DevDocumentPipeline
     """
+    from backend.boundary.vdb.dev_task import DevDocumentPipeline
+
     dev_pipeline = DevDocumentPipeline(
         chunk_size=1000,
         chunk_overlap=200,
@@ -61,12 +61,12 @@ def get_document_service(db: AsyncSession = get_db()) -> DocumentService:
     return DocumentService(db=db, dev_pipeline=dev_pipeline)
 
 
-def get_job_service(db: AsyncSession = get_db()) -> JobService:
+def get_job_service(db: Session = Depends(get_db)) -> JobService:
     """
     Get job service instance.
 
     Args:
-        db: Database session
+        db: Database session (injected via Depends)
 
     Returns:
         JobService: Job service instance
@@ -74,16 +74,21 @@ def get_job_service(db: AsyncSession = get_db()) -> JobService:
     return JobService(db=db)
 
 
-def get_chat_service(db: AsyncSession = get_db()) -> ChatService:
+def get_chat_service(db: Session = Depends(get_db)):
     """
     Get chat service instance with RAG agent.
 
     Args:
-        db: Database session
+        db: Database session (injected via Depends)
 
     Returns:
         ChatService: Chat service with configured RAG agent
     """
+    # Lazy import to avoid loading torch/transformers at startup
+    from backend.application.services import ChatService
+    from backend.boundary.vdb.faiss_store import FAISSStore
+    from backend.core.agentic_system.agent.rag_agent import RAGAgent
+
     # Create vector store
     vector_store = FAISSStore(
         persist_directory=".faiss_index",

@@ -9,6 +9,7 @@ System role: Request/response observability injection
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+import uuid
 
 
 class CorrelationMiddleware(BaseHTTPMiddleware):
@@ -25,7 +26,10 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
         Returns:
             Response: Response with correlation ID header
         """
-        pass
+        correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+        response: Response = await call_next(request)
+        response.headers["X-Correlation-ID"] = correlation_id
+        return response
 
 
 class LangfuseMiddleware(BaseHTTPMiddleware):
@@ -42,4 +46,5 @@ class LangfuseMiddleware(BaseHTTPMiddleware):
         Returns:
             Response: Response object
         """
-        pass
+        response: Response = await call_next(request)
+        return response

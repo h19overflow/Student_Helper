@@ -31,7 +31,17 @@
       "Bash(python -m pytest tests/integration/test_base_crud.py -v --tb=short)",
       "Bash(uv pip list:*)",
       "Bash(mv:*)",
-      "Bash(python -m pytest:*)"
+      "Bash(python -m pytest:*)",
+      "Bash(git add:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "mcp__docs-langchain__SearchDocsByLangChain",
+      "mcp__ide__getDiagnostics",
+      "Bash(uv pip show:*)",
+      "Skill(frontend-design:frontend-design)",
+      "Bash(npx tsc:*)",
+      "Bash(npm install:*)",
+      "Bash(.venvScriptspython.exe -m uvicorn backend.main:app --reload)"
     ]
   }
 }

@@ -10,10 +10,10 @@ System role: DI container for service injection
 from functools import lru_cache
 
 from fastapi import Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.configs import Settings, get_settings
-from backend.boundary.db import get_db
+from backend.boundary.db import get_async_db
 from backend.application.services import (
     DiagramService,
     DocumentService,
@@ -28,12 +28,12 @@ def get_settings_dependency() -> Settings:
     return get_settings()
 
 
-def get_session_service(db: Session = Depends(get_db)) -> SessionService:
+def get_session_service(db: AsyncSession = Depends(get_async_db)) -> SessionService:
     """
     Get session service instance.
 
     Args:
-        db: Database session (injected via Depends)
+        db: Async database session (injected via Depends)
 
     Returns:
         SessionService: Session service instance
@@ -41,12 +41,12 @@ def get_session_service(db: Session = Depends(get_db)) -> SessionService:
     return SessionService(db=db)
 
 
-def get_document_service(db: Session = Depends(get_db)) -> DocumentService:
+def get_document_service(db: AsyncSession = Depends(get_async_db)) -> DocumentService:
     """
     Get document service instance.
 
     Args:
-        db: Database session (injected via Depends)
+        db: Async database session (injected via Depends)
 
     Returns:
         DocumentService: Document service instance with DevDocumentPipeline
@@ -61,12 +61,12 @@ def get_document_service(db: Session = Depends(get_db)) -> DocumentService:
     return DocumentService(db=db, dev_pipeline=dev_pipeline)
 
 
-def get_job_service(db: Session = Depends(get_db)) -> JobService:
+def get_job_service(db: AsyncSession = Depends(get_async_db)) -> JobService:
     """
     Get job service instance.
 
     Args:
-        db: Database session (injected via Depends)
+        db: Async database session (injected via Depends)
 
     Returns:
         JobService: Job service instance
@@ -74,12 +74,12 @@ def get_job_service(db: Session = Depends(get_db)) -> JobService:
     return JobService(db=db)
 
 
-def get_chat_service(db: Session = Depends(get_db)):
+def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     """
     Get chat service instance with RAG agent.
 
     Args:
-        db: Database session (injected via Depends)
+        db: Async database session (injected via Depends)
 
     Returns:
         ChatService: Chat service with configured RAG agent

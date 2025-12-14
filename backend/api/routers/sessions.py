@@ -1,7 +1,7 @@
 """
 Session API endpoints.
 
-Routes: POST /sessions, POST /sessions/{id}/chat
+Routes: POST /sessions, GET /sessions, POST /sessions/{id}/chat
 
 Dependencies: backend.application.session_service, backend.models
 System role: Session HTTP API
@@ -19,20 +19,73 @@ from backend.api.deps import (
     get_diagram_service,
     get_session_service,
 )
-from backend.boundary.db import get_db
 from backend.models.chat import ChatRequest, ChatResponse
 from backend.models.citation import Citation
+from backend.models.session import CreateSessionRequest, SessionResponse
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
-@router.post("")
+@router.post("", response_model=SessionResponse)
 async def create_session(
+    request: CreateSessionRequest,
     session_service: SessionService = Depends(get_session_service),
-):
-    """Create new session."""
-    # Placeholder - implement when SessionService is ready
-    pass
+) -> SessionResponse:
+    """
+    Create new session with optional metadata.
+
+    Args:
+        request: CreateSessionRequest with metadata field
+        session_service: Injected SessionService
+
+    Returns:
+        SessionResponse: Created session
+
+    Raises:
+        HTTPException(400): Invalid request
+        HTTPException(500): Creation failed
+    """
+    try:
+        session_id = await session_service.create_session(metadata=request.metadata)
+        session_data = await session_service.get_session(session_id)
+        return SessionResponse(**session_data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Session creation failed: {str(e)}"
+        )
+
+
+@router.get("", response_model=list[SessionResponse])
+async def list_sessions(
+    limit: int = 100,
+    offset: int = 0,
+    session_service: SessionService = Depends(get_session_service),
+) -> list[SessionResponse]:
+    """
+    List all sessions with pagination.
+
+    Args:
+        limit: Maximum number of sessions (default 100)
+        offset: Number to skip (default 0)
+        session_service: Injected SessionService
+
+    Returns:
+        list[SessionResponse]: List of sessions
+
+    Raises:
+        HTTPException(500): Retrieval failed
+    """
+    try:
+        sessions = await session_service.get_all_sessions(limit=limit, offset=offset)
+        return [SessionResponse(**session) for session in sessions]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve sessions: {str(e)}"
+        )
 
 
 @router.post("/{session_id}/chat", response_model=ChatResponse)

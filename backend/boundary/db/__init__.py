@@ -3,7 +3,8 @@ Database boundary layer: ORM models, CRUD operations, and connection management.
 
 Exports:
   - Base, UUIDMixin, TimestampMixin: Model building blocks
-  - get_engine(), get_session_factory(), get_db(): Connection management
+  - get_engine(), get_session_factory(), get_db(): Sync connection management
+  - get_async_engine(), get_async_session_factory(), get_async_db(): Async connection management
   - SessionModel, DocumentModel, JobModel: Core domain entities
   - JobStatus, JobType, DocumentStatus: Enum types for state tracking
   - session_crud, document_crud, job_crud: CRUD operation singletons
@@ -14,7 +15,14 @@ documents, and background jobs with auto-lifecycle management.
 """
 
 from backend.boundary.db.base import Base, TimestampMixin, UUIDMixin
-from backend.boundary.db.connection import get_db, get_engine, get_session_factory
+from backend.boundary.db.connection import (
+    get_db,
+    get_engine,
+    get_session_factory,
+    get_async_db,
+    get_async_engine,
+    get_async_session_factory,
+)
 from backend.boundary.db.models.session_model import SessionModel
 from backend.boundary.db.models.document_model import DocumentModel, DocumentStatus
 from backend.boundary.db.models.job_model import JobModel, JobStatus, JobType
@@ -37,6 +45,9 @@ __all__ = [
     "get_db",
     "get_engine",
     "get_session_factory",
+    "get_async_db",
+    "get_async_engine",
+    "get_async_session_factory",
     # Models
     "SessionModel",
     "DocumentModel",

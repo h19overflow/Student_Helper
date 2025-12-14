@@ -35,6 +35,8 @@ dependencies = [
     "langchain-docling>=2.0.0",
     "pulumi-aws-native>=1.40.0",
     "pulumi-aws>=7.14.0",
+    "langchain-postgres>=0.0.16",
+    "psycopg[binary]>=3.3.2",
 ]
 
 [project.optional-dependencies]

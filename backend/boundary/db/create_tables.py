@@ -12,6 +12,7 @@ Usage:
 
 from backend.boundary.db.base import Base
 from backend.boundary.db.connection import get_engine
+from backend.boundary.db.CRUD.chat_history_crud import ChatHistoryCRUD
 
 # Import all models to register them with Base.metadata
 from backend.boundary.db.models.session_model import SessionModel  # noqa: F401
@@ -26,6 +27,9 @@ def create_all_tables() -> None:
     Idempotent: calls CREATE TABLE IF NOT EXISTS for each model, so safe
     to run multiple times. Existing tables remain unchanged.
 
+    Creates both SQLAlchemy tables (sessions, documents, jobs) and
+    chat_messages table (via PostgresChatMessageHistory).
+
     Raises:
         SQLAlchemyError: If database connection fails or table creation fails
         (e.g., invalid schema, permissions denied, unsupported data types)
@@ -36,7 +40,15 @@ def create_all_tables() -> None:
         create_all_tables()
     """
     engine = get_engine()
+
+    # Create SQLAlchemy ORM tables
     Base.metadata.create_all(bind=engine)
+    print("SQLAlchemy tables created successfully.")
+
+    # Create chat_messages table (via langchain_postgres)
+    ChatHistoryCRUD.create_table()
+    print("Chat history table created successfully.")
+
     print("All tables created successfully.")
 
 

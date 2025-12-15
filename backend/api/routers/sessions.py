@@ -88,6 +88,36 @@ async def list_sessions(
         )
 
 
+@router.delete("/{session_id}", status_code=204)
+async def delete_session(
+    session_id: UUID,
+    session_service: SessionService = Depends(get_session_service),
+) -> None:
+    """
+    Delete session by ID.
+
+    Args:
+        session_id: Session UUID
+        session_service: Injected SessionService
+
+    Returns:
+        204 No Content on success
+
+    Raises:
+        HTTPException(404): Session not found
+        HTTPException(500): Deletion failed
+    """
+    try:
+        await session_service.delete_session(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Session deletion failed: {str(e)}"
+        )
+
+
 @router.post("/{session_id}/chat", response_model=ChatResponse)
 async def chat(
     session_id: UUID,

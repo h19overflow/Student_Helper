@@ -4,10 +4,13 @@ RAG Q&A agent implementation.
 Agent for answering questions with citations using FAISSStore retrieval.
 Uses LangChain v1 create_agent with structured output.
 Supports Langfuse prompt registry integration for versioned prompts.
+Supports streaming via astream() method for WebSocket chat.
 
 Dependencies: langchain.agents, langchain_aws, backend.boundary.vdb
 System role: RAG Q&A agent orchestration
 """
+
+from collections.abc import AsyncGenerator
 
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
@@ -21,6 +24,7 @@ from backend.core.agentic_system.agent.rag_agent_prompt import (
 )
 from backend.core.agentic_system.agent.rag_agent_schema import RAGResponse
 from backend.core.agentic_system.agent.rag_agent_tool import create_search_tool
+from backend.models.streaming import StreamEvent, StreamEventType, StreamingCitation
 
 
 class RAGAgent:
@@ -164,6 +168,150 @@ class RAGAgent:
         result = await self._agent.ainvoke({"messages": messages})
 
         return result["structured_response"]
+
+    async def astream(
+        self,
+        question: str,
+        session_id: str | None = None,
+        chat_history: list[BaseMessage] | None = None,
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """
+        Stream response tokens for real-time chat.
+
+        Retrieves context, extracts citations, then streams LLM tokens.
+        Unlike ainvoke(), does not use structured output agent.
+
+        Args:
+            question: User's question
+            session_id: Optional session ID for filtering
+            chat_history: Optional conversation history for context
+
+        Yields:
+            StreamEvent: Context, token, citations, and complete events
+        """
+        # 1. Retrieve context directly from vector store
+        # Note: session_id filter disabled for now to allow cross-session search
+        # TODO: Re-enable when document indexing properly associates session_ids
+        search_results = self._vector_store.similarity_search(
+            query=question,
+            k=5,
+            # session_id=session_id,  # Disabled: causes empty results if session has no docs
+        )
+
+        # 2. Extract citations from search results
+        citations = [
+            StreamingCitation(
+                chunk_id=result.chunk_id,
+                doc_name=result.metadata.source_uri.split("/")[-1] if result.metadata.source_uri else "unknown",
+                page=result.metadata.page,
+                section=result.metadata.section,
+                source_uri=result.metadata.source_uri,
+            )
+            for result in search_results
+        ]
+
+        # 3. Yield context event with citation metadata
+        yield StreamEvent(
+            event=StreamEventType.CONTEXT,
+            data={
+                "chunks": [
+                    {
+                        "chunk_id": result.chunk_id,
+                        "content_snippet": result.content[:200],
+                        "page": result.metadata.page,
+                        "section": result.metadata.section,
+                        "source_uri": result.metadata.source_uri,
+                        "relevance_score": result.similarity_score,
+                    }
+                    for result in search_results
+                ]
+            },
+        )
+
+        # 4. Format context for prompt
+        if not search_results:
+            context_text = "No relevant documents found."
+        else:
+            formatted_chunks = []
+            for result in search_results:
+                chunk_text = f"""---
+chunk_id: {result.chunk_id}
+page: {result.metadata.page}
+section: {result.metadata.section}
+source_uri: {result.metadata.source_uri}
+relevance_score: {result.similarity_score:.3f}
+
+{result.content}
+---"""
+                formatted_chunks.append(chunk_text)
+            context_text = "\n".join(formatted_chunks)
+
+        # 5. Format chat history
+        history_text = ""
+        if chat_history:
+            formatted_messages = [
+                f"{'User' if msg.type == 'human' else 'Assistant'}: {msg.content}"
+                for msg in chat_history
+            ]
+            history_text = "Previous Conversation:\n" + "\n".join(formatted_messages) + "\n"
+
+        # 6. Build prompt messages
+        prompt = get_rag_prompt(
+            use_registry=self._use_prompt_registry,
+            label=self._prompt_label,
+        )
+        messages = prompt.invoke({
+            "context": context_text,
+            "question": question,
+            "chat_history": history_text,
+        }).to_messages()
+
+        # 7. Stream tokens from model
+        full_answer = ""
+        token_index = 0
+        async for chunk in self._model.astream(messages):
+            if chunk.content:
+                # Handle both string and list content from Bedrock
+                if isinstance(chunk.content, list):
+                    # If content is a list of items, convert to string
+                    token_content = "".join(
+                        str(item) if isinstance(item, str) else (item.get("text", "") if isinstance(item, dict) else str(item))
+                        for item in chunk.content
+                    )
+                else:
+                    # If content is already a string
+                    token_content = str(chunk.content)
+
+                full_answer += token_content
+                yield StreamEvent(
+                    event=StreamEventType.TOKEN,
+                    data={"token": token_content, "index": token_index},
+                )
+                token_index += 1
+
+        # 8. Yield citations
+        yield StreamEvent(
+            event=StreamEventType.CITATIONS,
+            data={
+                "citations": [citation.model_dump() for citation in citations]
+            },
+        )
+
+        # 9. Yield completion event
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(
+            "Sending completion event",
+            extra={
+                "full_answer_length": len(full_answer),
+                "full_answer_preview": full_answer[:100] if full_answer else "EMPTY",
+            },
+        )
+        yield StreamEvent(
+            event=StreamEventType.COMPLETE,
+            data={"fullAnswer": full_answer},
+        )
+
 
 if __name__ == "__main__":
     from backend.boundary.vdb.faiss_store import FAISSStore

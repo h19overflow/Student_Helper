@@ -93,7 +93,7 @@ def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     vector_store = FAISSStore(
         persist_directory=".faiss_index",
         model_id="amazon.titan-embed-text-v2:0",
-        region="us-east-1",
+        region="ap-southeast-2",
     )
 
     # Create RAG agent

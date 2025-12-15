@@ -38,10 +38,9 @@ Use this to:
 
 ## Context Format
 Each context chunk includes:
-- chunk_id: Unique identifier (use this for citations)
-- content: The actual text content
-- page: Page number (if available)
-- section: Section heading (if available)
+- content: The actual text content use this for citation
+- page: Page number (if available) use this for citation
+- section: Section heading (if available) use this for citation
 - source_uri: Original document location
 - relevance_score: How relevant this chunk is to the query
 

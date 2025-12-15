@@ -3,11 +3,13 @@ Chat service for conversational Q&A with RAG.
 
 Orchestrates full chat flow: history retrieval, RAG invocation, message persistence.
 Integrates ChatHistoryAdapter for PostgreSQL message storage and RAGAgent for Q&A.
+Supports streaming via stream_chat() for WebSocket real-time responses.
 
 Dependencies: backend.core.agentic_system, backend.application.adapters, backend.boundary.db
 System role: Chat service orchestration layer
 """
 
+from collections.abc import AsyncGenerator
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +18,7 @@ from backend.application.adapters.chat_history_adapter import ChatHistoryAdapter
 from backend.boundary.db.CRUD.session_crud import session_crud
 from backend.core.agentic_system.agent.rag_agent import RAGAgent
 from backend.core.agentic_system.agent.rag_agent_schema import RAGResponse
+from backend.models.streaming import StreamEvent, StreamEventType
 
 
 class ChatService:
@@ -93,3 +96,62 @@ class ChatService:
         await chat_adapter.add_ai_message(rag_response.answer)
 
         return rag_response
+
+    async def stream_chat(
+        self,
+        session_id: UUID,
+        message: str,
+        context_window_size: int = 10,
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """
+        Stream chat response tokens for real-time WebSocket delivery.
+
+        Flow:
+        1. Validate session exists
+        2. Fetch recent chat history
+        3. Stream events from RAG agent
+        4. Store messages after completion
+
+        Args:
+            session_id: Session UUID
+            message: User's message
+            context_window_size: Number of recent messages for context
+
+        Yields:
+            StreamEvent: Context, token, citations, and complete events
+
+        Raises:
+            ValueError: If session does not exist
+        """
+        # Validate session exists
+        session = await session_crud.get_by_id(self.db, session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} does not exist")
+
+        # Create chat history adapter for this session
+        chat_adapter = ChatHistoryAdapter(session_id=session_id, db=self.db)
+
+        # Fetch recent conversation history
+        chat_history = await chat_adapter.get_messages(limit=context_window_size)
+
+        # Store user message before streaming starts
+        await chat_adapter.add_user_message(message)
+
+        # Track full answer for persistence
+        full_answer = ""
+
+        # Stream from RAG agent
+        async for event in self.rag_agent.astream(
+            question=message,
+            session_id=str(session_id),
+            chat_history=chat_history,
+        ):
+            yield event
+
+            # Capture full answer from complete event
+            if event.event == StreamEventType.COMPLETE:
+                full_answer = event.data.get("full_answer", "")
+
+        # Store AI response after streaming completes
+        if full_answer:
+            await chat_adapter.add_ai_message(full_answer)

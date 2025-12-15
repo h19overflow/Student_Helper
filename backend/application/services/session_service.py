@@ -101,6 +101,26 @@ class SessionService:
             for s in sessions
         ]
 
+    async def delete_session(self, session_id: UUID) -> bool:
+        """
+        Delete session by ID.
+
+        Args:
+            session_id: Session UUID
+
+        Returns:
+            bool: True if deleted, False if not found
+
+        Raises:
+            ValueError: If session not found
+        """
+        deleted = await session_crud.delete_by_id(self.db, session_id)
+
+        if not deleted:
+            raise ValueError(f"Session {session_id} does not exist")
+
+        return True
+
     async def add_chat_message(
         self,
         session_id: UUID,

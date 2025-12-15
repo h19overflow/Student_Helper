@@ -50,7 +50,18 @@
       "Bash(Remove-Item -Recurse -Force .venv)",
       "Bash(curl:*)",
       "Bash(python -m test_session_db:*)",
-      "Bash(uv add:*)"
+      "Bash(uv add:*)",
+      "Bash(npm run dev:*)",
+      "Bash(timeout /t 3)",
+      "WebSearch",
+      "Bash(npm run build:*)",
+      "Bash(netstat:*)",
+      "Bash(tasklist:*)",
+      "Bash(wmic process:*)",
+      "Bash(powershell -Command \"Get-Process -Id 4280 | Select-Object Name, Id, Path\")",
+      "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter ''ProcessId = 4280'' | Select-Object CommandLine\")",
+      "Bash(taskkill:*)",
+      "Bash(powershell -Command:*)"
     ]
   }
 }

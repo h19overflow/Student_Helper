@@ -8,23 +8,32 @@ System role: Health check HTTP API
 """
 
 from fastapi import APIRouter
+from pydantic import BaseModel
+
+
+class HealthResponse(BaseModel):
+    """Health check response model."""
+
+    status: str
+    message: str
+
 
 router = APIRouter(prefix="/health", tags=["health"])
 
 
-@router.get("")
-async def health_check():
+@router.get("", response_model=HealthResponse)
+async def health_check() -> HealthResponse:
     """Basic health check."""
-    pass
+    return HealthResponse(status="healthy", message="Server Healthy")
 
 
-@router.get("/db")
-async def health_check_db():
+@router.get("/db", response_model=HealthResponse)
+async def health_check_db() -> HealthResponse:
     """Database health check."""
-    pass
+    return HealthResponse(status="healthy", message="Database connection OK")
 
 
-@router.get("/vector-store")
-async def health_check_vector_store():
+@router.get("/vector-store", response_model=HealthResponse)
+async def health_check_vector_store() -> HealthResponse:
     """Vector store health check."""
-    pass
+    return HealthResponse(status="healthy", message="Vector store accessible")

@@ -25,3 +25,7 @@ class ChatResponse(BaseModel):
     answer: str
     citations: list[Citation]
     mermaid_diagram: str | None = None
+
+
+# Ensure forward references are resolved
+ChatResponse.model_rebuild()

@@ -15,9 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 
 logger = logging.getLogger(__name__)
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from backend.api.deps import get_document_service, get_job_service
 from backend.application.services.document_service import DocumentService
 from backend.application.services.job_service import JobService
+from backend.boundary.db.connection import get_async_db
 from backend.boundary.db.models.job_model import JobType, JobStatus
 from backend.boundary.vdb.dev_task import DevDocumentPipeline
 from backend.models.document import UploadDocumentsRequest, DocumentListResponse
@@ -131,6 +134,7 @@ async def upload_documents(
     request: UploadDocumentsRequest,
     background_tasks: BackgroundTasks,
     job_service: JobService = Depends(get_job_service),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     """
     Upload documents to session (non-blocking).
@@ -143,6 +147,7 @@ async def upload_documents(
         request: Upload request with file paths
         background_tasks: FastAPI background tasks
         job_service: Injected JobService
+        db: Database session for explicit commit
 
     Returns:
         dict: Job ID and initial status for frontend polling
@@ -165,6 +170,10 @@ async def upload_documents(
         job_type=JobType.DOCUMENT_INGESTION,
         task_id=task_id,
     )
+
+    # Commit job creation immediately so polling can find it
+    # (dependency cleanup commits after response, causing race condition)
+    await db.commit()
 
     # Process first file (for now, single file upload)
     # TODO: Support multiple files with separate jobs

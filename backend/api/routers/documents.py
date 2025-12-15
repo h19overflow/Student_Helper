@@ -21,151 +21,18 @@ logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_document_service, get_job_service
+from backend.api.routers.router_utils.document_utils import process_document_background
 from backend.application.services.document_service import DocumentService
 from backend.application.services.job_service import JobService
 from backend.boundary.db.connection import get_async_db
 from backend.boundary.db.models.job_model import JobType, JobStatus
-from backend.boundary.vdb.dev_task import DevDocumentPipeline
-from backend.models.document import UploadDocumentsRequest, DocumentListResponse
+from backend.models.document import DocumentListResponse
 
 router = APIRouter(prefix="/sessions", tags=["documents"])
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {".pdf"}
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
-
-
-def cleanup_temp_file(file_path: str) -> None:
-    """
-    Safely remove temporary file and its parent temp directory.
-
-    Args:
-        file_path: Path to file to remove
-    """
-    try:
-        path = Path(file_path)
-        parent_dir = path.parent
-
-        # Remove the file
-        if path.exists():
-            path.unlink()
-            logger.debug("Cleaned up temp file", extra={"file_path": file_path})
-
-        # Remove the temp directory if it's a studybuddy temp dir and empty
-        if parent_dir.exists() and parent_dir.name.startswith("studybuddy_"):
-            shutil.rmtree(parent_dir, ignore_errors=True)
-            logger.debug("Cleaned up temp directory", extra={"temp_dir": str(parent_dir)})
-
-    except Exception as e:
-        logger.warning(
-            "Failed to cleanup temp file",
-            extra={"file_path": file_path, "error": str(e)},
-        )
-
-
-async def process_document_background(
-    job_id: UUID,
-    file_path: str,
-    session_id: UUID,
-    document_name: str,
-) -> None:
-    """
-    Background task for document processing.
-
-    Creates its own async database session for the background context.
-    Always cleans up the temp file after processing (success or failure).
-
-    Args:
-        job_id: Job UUID for status tracking
-        file_path: Path to uploaded document (temp file)
-        session_id: Session UUID
-        document_name: Document filename
-    """
-    from backend.boundary.db.connection import get_async_session_factory
-
-    logger.info(
-        "Starting background document processing",
-        extra={
-            "job_id": str(job_id),
-            "session_id": str(session_id),
-            "document_name": document_name,
-            "file_path": file_path,
-        },
-    )
-
-    # Create fresh async session for background task
-    SessionFactory = get_async_session_factory()
-
-    try:
-        async with SessionFactory() as db:
-            try:
-                # Create services with fresh session
-                dev_pipeline = DevDocumentPipeline(
-                    chunk_size=1000,
-                    chunk_overlap=200,
-                    persist_directory=".faiss_index",
-                )
-                document_service = DocumentService(db=db, dev_pipeline=dev_pipeline)
-                job_service = JobService(db=db)
-
-                # Mark job as running
-                logger.debug("Marking job as running", extra={"job_id": str(job_id)})
-                await job_service.mark_job_running(job_id, progress=10)
-
-                # Process document through pipeline
-                logger.info(
-                    "Processing document through pipeline",
-                    extra={"job_id": str(job_id), "file_path": file_path},
-                )
-                result = await document_service.upload_document(
-                    file_path=file_path,
-                    session_id=session_id,
-                    document_name=document_name,
-                )
-
-                # Mark job as completed
-                result_data = {
-                    "document_id": str(result.document_id) if hasattr(result, 'document_id') else None,
-                    "chunk_count": result.chunk_count if hasattr(result, 'chunk_count') else 0,
-                    "processing_time_ms": result.processing_time_ms if hasattr(result, 'processing_time_ms') else 0,
-                    "index_path": result.index_path if hasattr(result, 'index_path') else None,
-                }
-                logger.info(
-                    "Document processing completed",
-                    extra={"job_id": str(job_id), "result": result_data},
-                )
-                await job_service.mark_job_completed(job_id, result_data=result_data)
-                await db.commit()
-
-            except Exception as e:
-                logger.exception(
-                    "Document processing failed",
-                    extra={
-                        "job_id": str(job_id),
-                        "session_id": str(session_id),
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                    },
-                )
-                await db.rollback()
-                # Mark job as failed
-                try:
-                    await job_service.mark_job_failed(
-                        job_id,
-                        error_details={
-                            "error": str(e),
-                            "type": type(e).__name__,
-                        },
-                    )
-                    await db.commit()
-                except Exception as inner_e:
-                    logger.exception(
-                        "Failed to record job failure",
-                        extra={"job_id": str(job_id), "inner_error": str(inner_e)},
-                    )
-    finally:
-        # Always cleanup temp file
-        cleanup_temp_file(file_path)
 
 
 @router.post("/{session_id}/docs")

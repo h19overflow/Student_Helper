@@ -18,7 +18,6 @@ from langchain_core.documents import Document
 
 from backend.boundary.vdb.vector_schemas import (
     VectorMetadata,
-    VectorQuery,
     VectorSearchResult,
 )
 

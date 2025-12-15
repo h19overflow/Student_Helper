@@ -47,7 +47,10 @@
       "Bash(uv pip install:*)",
       "Bash(Remove-Item -Recurse -Force .venvLibsite-packagestornado* -ErrorAction SilentlyContinue)",
       "Bash(uv pip freeze:*)",
-      "Bash(Remove-Item -Recurse -Force .venv)"
+      "Bash(Remove-Item -Recurse -Force .venv)",
+      "Bash(curl:*)",
+      "Bash(python -m test_session_db:*)",
+      "Bash(uv add:*)"
     ]
   }
 }

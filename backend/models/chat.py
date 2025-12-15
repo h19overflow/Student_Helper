@@ -9,6 +9,8 @@ System role: Chat API contracts
 
 from pydantic import BaseModel, Field
 
+from backend.models.citation import Citation
+
 
 class ChatRequest(BaseModel):
     """Request schema for chat messages."""
@@ -21,5 +23,5 @@ class ChatResponse(BaseModel):
     """Response schema for chat messages."""
 
     answer: str
-    citations: list["Citation"]
+    citations: list[Citation]
     mermaid_diagram: str | None = None

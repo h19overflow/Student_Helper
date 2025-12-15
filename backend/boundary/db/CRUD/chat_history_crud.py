@@ -68,9 +68,10 @@ class ChatHistoryCRUD:
         # TODO: Migrate to async when langchain_postgres async is stable
         sync_connection = psycopg.connect(self.connection_string)
 
+        # table_name and session_id are positional-only in newer langchain_postgres
         return PostgresChatMessageHistory(
-            table_name=self.TABLE_NAME,
-            session_id=str(session_id),
+            self.TABLE_NAME,
+            str(session_id),
             sync_connection=sync_connection,
         )
 
@@ -173,6 +174,7 @@ class ChatHistoryCRUD:
         connection_string = settings.database.database_url
 
         with psycopg.connect(connection_string) as conn:
+            # Positional argument for table_name in newer langchain_postgres
             PostgresChatMessageHistory.create_tables(conn, cls.TABLE_NAME)
 
 

@@ -142,18 +142,18 @@ class DocumentService:
             doc_id=str(doc_id) if doc_id else None,
         )
 
-    async def get_session_documents(self, session_id: UUID) -> list[str]:
+    async def get_session_documents(self, session_id: UUID):
         """
-        Query collection for document names in session.
+        Query collection for documents in session.
 
         Args:
             session_id: Session UUID
 
         Returns:
-            list[str]: Document names/filenames
+            Sequence[DocumentModel]: Document records from database
         """
         documents = await document_crud.get_by_session_id(self.db, session_id)
-        return [doc.name for doc in documents]
+        return documents
 
     async def delete_document(self, doc_id: UUID, session_id: UUID) -> None:
         """
@@ -206,87 +206,5 @@ class DocumentService:
         # For production with S3 Vectors, this would be a single operation
         self.pipeline.clear_index()
 
-    # Legacy methods (keeping for backward compatibility)
 
-    async def upload_documents(
-        self,
-        session_id: UUID,
-        files: list[str],
-    ) -> list[UUID]:
-        """
-        Upload multiple documents (legacy interface).
 
-        Args:
-            session_id: Session UUID
-            files: List of file paths
-
-        Returns:
-            list[UUID]: Document IDs
-        """
-        doc_ids = []
-        for file_path in files:
-            result = await self.upload_document(
-                file_path=file_path,
-                session_id=session_id,
-                document_name=file_path.split("/")[-1],  # Extract filename
-            )
-            # Extract doc_id from result.document_id
-            doc_ids.append(UUID(result.document_id))
-        return doc_ids
-
-    async def get_documents(
-        self,
-        session_id: UUID,
-        cursor: str | None = None,
-    ) -> dict:
-        """
-        Get paginated document list (legacy interface).
-
-        Args:
-            session_id: Session UUID
-            cursor: Optional pagination cursor
-
-        Returns:
-            dict: Documents list with pagination info
-        """
-        documents = await document_crud.get_by_session_id(self.db, session_id)
-        return {
-            "documents": [
-                {
-                    "id": str(doc.id),
-                    "name": doc.name,
-                    "status": doc.status.value,
-                    "created_at": doc.created_at.isoformat(),
-                    "error_message": doc.error_message,
-                }
-                for doc in documents
-            ],
-            "total": len(documents),
-            "cursor": None,  # Pagination not implemented
-        }
-
-    async def get_document_status(self, doc_id: UUID) -> dict:
-        """
-        Get document processing status (legacy interface).
-
-        Args:
-            doc_id: Document UUID
-
-        Returns:
-            dict: Document status info
-
-        Raises:
-            ValueError: If document doesn't exist
-        """
-        document = await document_crud.get_by_id(self.db, doc_id)
-        if not document:
-            raise ValueError(f"Document {doc_id} does not exist")
-
-        return {
-            "id": str(document.id),
-            "name": document.name,
-            "status": document.status.value,
-            "created_at": document.created_at.isoformat(),
-            "updated_at": document.updated_at.isoformat(),
-            "error_message": document.error_message,
-        }

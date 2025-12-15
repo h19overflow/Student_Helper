@@ -3,7 +3,7 @@ name = "legal-search"
 version = "0.1.0"
 description = "Student-focused RAG application with session-based Q&A, async document ingestion, and Mermaid diagram generation"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     # FastAPI Framework
     "fastapi[standard]>=0.115.0",

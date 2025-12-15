@@ -7,15 +7,17 @@ Dependencies: backend.application.document_service, backend.models
 System role: Document HTTP API
 """
 
+import logging
 from uuid import UUID
 import uuid as uuid_lib
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 
+logger = logging.getLogger(__name__)
+
 from backend.api.deps import get_document_service, get_job_service
 from backend.application.services.document_service import DocumentService
 from backend.application.services.job_service import JobService
-from backend.boundary.db.connection import get_session_factory
 from backend.boundary.db.models.job_model import JobType, JobStatus
 from backend.boundary.vdb.dev_task import DevDocumentPipeline
 from backend.models.document import UploadDocumentsRequest, DocumentListResponse
@@ -23,7 +25,7 @@ from backend.models.document import UploadDocumentsRequest, DocumentListResponse
 router = APIRouter(prefix="/sessions", tags=["documents"])
 
 
-def process_document_background(
+async def process_document_background(
     job_id: UUID,
     file_path: str,
     session_id: UUID,
@@ -32,7 +34,7 @@ def process_document_background(
     """
     Background task for document processing.
 
-    Creates its own database session for the background context.
+    Creates its own async database session for the background context.
 
     Args:
         job_id: Job UUID for status tracking
@@ -40,64 +42,91 @@ def process_document_background(
         session_id: Session UUID
         document_name: Document filename
     """
-    # Create fresh session for background task
-    SessionFactory = get_session_factory()
-    db = SessionFactory()
+    from backend.boundary.db.connection import get_async_session_factory
 
-    try:
-        # Create services with fresh session
-        dev_pipeline = DevDocumentPipeline(
-            chunk_size=1000,
-            chunk_overlap=200,
-            persist_directory=".faiss_index",
-        )
-        document_service = DocumentService(db=db, dev_pipeline=dev_pipeline)
-        job_service = JobService(db=db)
+    logger.info(
+        "Starting background document processing",
+        extra={
+            "job_id": str(job_id),
+            "session_id": str(session_id),
+            "document_name": document_name,
+            "file_path": file_path,
+        },
+    )
 
-        # Mark job as running
-        job_service.mark_job_running_sync(job_id, progress=10)
+    # Create fresh async session for background task
+    SessionFactory = get_async_session_factory()
 
-        # Process document through pipeline
-        result = document_service.upload_document_sync(
-            file_path=file_path,
-            session_id=session_id,
-            document_name=document_name,
-        )
+    async with SessionFactory() as db:
+        try:
+            # Create services with fresh session
+            dev_pipeline = DevDocumentPipeline(
+                chunk_size=1000,
+                chunk_overlap=200,
+                persist_directory=".faiss_index",
+            )
+            document_service = DocumentService(db=db, dev_pipeline=dev_pipeline)
+            job_service = JobService(db=db)
 
-        # Mark job as completed
-        job_service.mark_job_completed_sync(
-            job_id,
-            result_data={
+            # Mark job as running
+            logger.debug("Marking job as running", extra={"job_id": str(job_id)})
+            await job_service.mark_job_running(job_id, progress=10)
+
+            # Process document through pipeline
+            logger.info(
+                "Processing document through pipeline",
+                extra={"job_id": str(job_id), "file_path": file_path},
+            )
+            result = await document_service.upload_document(
+                file_path=file_path,
+                session_id=session_id,
+                document_name=document_name,
+            )
+
+            # Mark job as completed
+            result_data = {
                 "document_id": str(result.document_id) if hasattr(result, 'document_id') else None,
                 "chunk_count": result.chunk_count if hasattr(result, 'chunk_count') else 0,
                 "processing_time_ms": result.processing_time_ms if hasattr(result, 'processing_time_ms') else 0,
                 "index_path": result.index_path if hasattr(result, 'index_path') else None,
-            },
-        )
-        db.commit()
+            }
+            logger.info(
+                "Document processing completed",
+                extra={"job_id": str(job_id), "result": result_data},
+            )
+            await job_service.mark_job_completed(job_id, result_data=result_data)
+            await db.commit()
 
-    except Exception as e:
-        db.rollback()
-        # Mark job as failed
-        try:
-            job_service = JobService(db=db)
-            job_service.mark_job_failed_sync(
-                job_id,
-                error_details={
+        except Exception as e:
+            logger.exception(
+                "Document processing failed",
+                extra={
+                    "job_id": str(job_id),
+                    "session_id": str(session_id),
                     "error": str(e),
-                    "type": type(e).__name__,
+                    "error_type": type(e).__name__,
                 },
             )
-            db.commit()
-        except Exception:
-            pass  # Best effort to record failure
-
-    finally:
-        db.close()
+            await db.rollback()
+            # Mark job as failed
+            try:
+                await job_service.mark_job_failed(
+                    job_id,
+                    error_details={
+                        "error": str(e),
+                        "type": type(e).__name__,
+                    },
+                )
+                await db.commit()
+            except Exception as inner_e:
+                logger.exception(
+                    "Failed to record job failure",
+                    extra={"job_id": str(job_id), "inner_error": str(inner_e)},
+                )
 
 
 @router.post("/{session_id}/docs")
-def upload_documents(
+async def upload_documents(
     session_id: UUID,
     request: UploadDocumentsRequest,
     background_tasks: BackgroundTasks,
@@ -121,12 +150,18 @@ def upload_documents(
     Raises:
         HTTPException(400): Invalid request
     """
+    logger.info(
+        "Document upload request received",
+        extra={"session_id": str(session_id), "file_count": len(request.files) if request.files else 0},
+    )
+
     if not request.files:
+        logger.warning("Upload request rejected: no files provided", extra={"session_id": str(session_id)})
         raise HTTPException(status_code=400, detail="No files provided")
 
     # Create job for tracking
     task_id = str(uuid_lib.uuid4())
-    job_id = job_service.create_job_sync(
+    job_id = await job_service.create_job(
         job_type=JobType.DOCUMENT_INGESTION,
         task_id=task_id,
     )
@@ -153,7 +188,7 @@ def upload_documents(
 
 
 @router.get("/{session_id}/docs", response_model=DocumentListResponse)
-def get_documents(
+async def get_documents(
     session_id: UUID,
     cursor: str | None = None,
     document_service: DocumentService = Depends(get_document_service),
@@ -168,29 +203,49 @@ def get_documents(
 
     Returns:
         DocumentListResponse: List of documents with metadata
+
+    Raises:
+        HTTPException(500): Database or service error
     """
-    result = document_service.get_documents_sync(
-        session_id=session_id,
-        cursor=cursor,
-    )
+    logger.info("Fetching documents for session", extra={"session_id": str(session_id)})
 
-    # Map to response model
-    from backend.models.document import DocumentResponse
-
-    documents = [
-        DocumentResponse(
-            id=UUID(doc["id"]),
+    try:
+        documents_list = await document_service.get_session_documents(
             session_id=session_id,
-            name=doc["name"],
-            status=doc["status"],
-            created_at=doc["created_at"],
-            error_message=doc.get("error_message"),
         )
-        for doc in result["documents"]
-    ]
 
-    return DocumentListResponse(
-        documents=documents,
-        total=result["total"],
-        cursor=result.get("cursor"),
-    )
+        # Map to response model
+        from backend.models.document import DocumentResponse
+
+        documents = [
+            DocumentResponse(
+                id=doc.id,
+                session_id=doc.session_id,
+                name=doc.name,
+                status=doc.status.value if hasattr(doc.status, "value") else doc.status,
+                created_at=doc.created_at,
+                error_message=doc.error_message,
+            )
+            for doc in documents_list
+        ]
+
+        logger.info(
+            "Documents fetched successfully",
+            extra={"session_id": str(session_id), "document_count": len(documents)},
+        )
+
+        return DocumentListResponse(
+            documents=documents,
+            total=len(documents),
+            cursor=None,
+        )
+
+    except Exception as e:
+        logger.exception(
+            "Failed to fetch documents",
+            extra={"session_id": str(session_id), "error": str(e), "error_type": type(e).__name__},
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch documents: {str(e)}",
+        )

@@ -41,7 +41,13 @@
       "Skill(frontend-design:frontend-design)",
       "Bash(npx tsc:*)",
       "Bash(npm install:*)",
-      "Bash(.venvScriptspython.exe -m uvicorn backend.main:app --reload)"
+      "Bash(.venvScriptspython.exe -m uvicorn backend.main:app --reload)",
+      "Bash(python -m uvicorn:*)",
+      "Bash(uv pip uninstall:*)",
+      "Bash(uv pip install:*)",
+      "Bash(Remove-Item -Recurse -Force .venvLibsite-packagestornado* -ErrorAction SilentlyContinue)",
+      "Bash(uv pip freeze:*)",
+      "Bash(Remove-Item -Recurse -Force .venv)"
     ]
   }
 }

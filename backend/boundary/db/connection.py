@@ -128,7 +128,7 @@ def get_async_engine() -> AsyncEngine:
     return create_async_engine(
         db_config.async_database_url,
         echo=db_config.echo_sql,
-        poolclass=QueuePool,
+        # poolclass not needed - async engine uses AsyncAdaptedQueuePool by default
         pool_size=db_config.pool_size,
         max_overflow=db_config.max_overflow,
         pool_timeout=db_config.pool_timeout,
@@ -166,8 +166,8 @@ async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     FastAPI dependency for async database session injection with automatic cleanup.
 
     Creates a new async database session for each request and ensures it's closed
-    after the route completes, even if exceptions occur. Use this for any
-    route that needs async database access.
+    after the route completes, even if exceptions occur. Commits on success,
+    rolls back on failure.
 
     Yields:
         AsyncSession: Async SQLAlchemy database session (scoped to request lifetime)
@@ -184,4 +184,9 @@ async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     """
     SessionFactory = get_async_session_factory()
     async with SessionFactory() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise

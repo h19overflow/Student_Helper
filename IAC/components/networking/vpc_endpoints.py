@@ -40,7 +40,7 @@ class VpcEndpointsComponent(pulumi.ComponentResource):
         self.s3_endpoint = aws.ec2.VpcEndpoint(
             f"{name}-s3-endpoint",
             vpc_id=vpc_id,
-            service_name=f"com.amazonaws.{region.name}.s3",
+            service_name=f"com.amazonaws.{region.id}.s3",
             vpc_endpoint_type="Gateway",
             route_table_ids=route_table_ids,
             tags=create_tags(environment, f"{name}-s3-endpoint"),
@@ -51,7 +51,7 @@ class VpcEndpointsComponent(pulumi.ComponentResource):
         self.sqs_endpoint = aws.ec2.VpcEndpoint(
             f"{name}-sqs-endpoint",
             vpc_id=vpc_id,
-            service_name=f"com.amazonaws.{region.name}.sqs",
+            service_name=f"com.amazonaws.{region.id}.sqs",
             vpc_endpoint_type="Interface",
             subnet_ids=subnet_ids,
             security_group_ids=[security_group_id],
@@ -64,7 +64,7 @@ class VpcEndpointsComponent(pulumi.ComponentResource):
         self.secrets_endpoint = aws.ec2.VpcEndpoint(
             f"{name}-secrets-endpoint",
             vpc_id=vpc_id,
-            service_name=f"com.amazonaws.{region.name}.secretsmanager",
+            service_name=f"com.amazonaws.{region.id}.secretsmanager",
             vpc_endpoint_type="Interface",
             subnet_ids=subnet_ids,
             security_group_ids=[security_group_id],
@@ -77,7 +77,7 @@ class VpcEndpointsComponent(pulumi.ComponentResource):
         self.bedrock_endpoint = aws.ec2.VpcEndpoint(
             f"{name}-bedrock-endpoint",
             vpc_id=vpc_id,
-            service_name=f"com.amazonaws.{region.name}.bedrock-runtime",
+            service_name=f"com.amazonaws.{region.id}.bedrock-runtime",
             vpc_endpoint_type="Interface",
             subnet_ids=subnet_ids,
             security_group_ids=[security_group_id],

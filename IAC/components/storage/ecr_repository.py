@@ -49,9 +49,11 @@ class EcrRepositoryComponent(pulumi.ComponentResource):
                 scan_on_push=True,  # Scan images for vulnerabilities
             ),
             image_tag_mutability="MUTABLE",  # Allow tag updates
-            encryption_configuration=aws.ecr.RepositoryEncryptionConfigurationArgs(
-                encryption_type="AES256",  # Encrypt images at rest
-            ),
+            encryption_configurations=[
+                aws.ecr.RepositoryEncryptionConfigurationArgs(
+                    encryption_type="AES256",  # Encrypt images at rest
+                ),
+            ],
             tags=create_tags(environment, f"{name}-lambda-repo"),
             opts=child_opts,
         )

@@ -29,7 +29,9 @@ class ResourceNamer:
         Returns:
             Formatted resource name
         """
-        return f"{self.project}-{self.environment}-{resource}"
+        if resource:
+            return f"{self.project}-{self.environment}-{resource}"
+        return f"{self.project}-{self.environment}"
 
     def bucket_name(self, suffix: str) -> str:
         """

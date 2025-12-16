@@ -62,7 +62,7 @@ class LambdaProcessorComponent(pulumi.ComponentResource):
         # Note: Actual code deployment handled via CI/CD or separate process
         self.function = aws.lambda_.Function(
             f"{name}-function",
-            function_name=name,
+            name=name,
             role=role_arn,
             runtime="python3.11",
             handler="backend.core.document_processing.entrypoint.handler",

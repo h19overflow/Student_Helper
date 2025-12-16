@@ -158,7 +158,7 @@ class IamRolesComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
-        # Lambda custom policy - S3, SQS, Secrets Manager
+        # Lambda custom policy - S3, S3 Vectors, SQS, Secrets Manager, Bedrock
         lambda_policy = aws.iam.RolePolicy(
             f"{name}-lambda-policy",
             role=self.lambda_role.id,
@@ -173,6 +173,18 @@ class IamRolesComponent(pulumi.ComponentResource):
                             "s3:ListBucket",
                         ],
                         "Resource": ["arn:aws:s3:::*"],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3vectors:CreateIndex",
+                            "s3vectors:PutVectors",
+                            "s3vectors:GetVectors",
+                            "s3vectors:QueryVectors",
+                            "s3vectors:DeleteVectors",
+                            "s3vectors:ListVectors",
+                        ],
+                        "Resource": ["arn:aws:s3vectors:*:*:*"],
                     },
                     {
                         "Effect": "Allow",

@@ -51,27 +51,27 @@ class S3BucketsComponent(pulumi.ComponentResource):
         child_opts = pulumi.ResourceOptions(parent=self)
 
         # Documents bucket (uploaded PDFs)
-        self.documents_bucket = aws.s3.BucketV2(
+        self.documents_bucket = aws.s3.Bucket(
             f"{name}-documents",
             bucket=namer.bucket_name("documents"),
             tags=create_tags(environment, f"{name}-documents"),
             opts=child_opts,
         )
 
-        aws.s3.BucketVersioningV2(
+        aws.s3.BucketVersioning(
             f"{name}-documents-versioning",
             bucket=self.documents_bucket.id,
-            versioning_configuration=aws.s3.BucketVersioningV2VersioningConfigurationArgs(
+            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
                 status="Enabled",
             ),
             opts=child_opts,
         )
 
-        aws.s3.BucketServerSideEncryptionConfigurationV2(
+        aws.s3.BucketServerSideEncryptionConfiguration(
             f"{name}-documents-encryption",
             bucket=self.documents_bucket.id,
-            rules=[aws.s3.BucketServerSideEncryptionConfigurationV2RuleArgs(
-                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationV2RuleApplyServerSideEncryptionByDefaultArgs(
+            rules=[aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                     sse_algorithm="AES256",
                 ),
             )],
@@ -105,20 +105,20 @@ class S3BucketsComponent(pulumi.ComponentResource):
         )
 
         # Frontend bucket (static assets)
-        self.frontend_bucket = aws.s3.BucketV2(
+        self.frontend_bucket = aws.s3.Bucket(
             f"{name}-frontend",
             bucket=namer.bucket_name("frontend"),
             tags=create_tags(environment, f"{name}-frontend"),
             opts=child_opts,
         )
 
-        aws.s3.BucketWebsiteConfigurationV2(
+        aws.s3.BucketWebsiteConfiguration(
             f"{name}-frontend-website",
             bucket=self.frontend_bucket.id,
-            index_document=aws.s3.BucketWebsiteConfigurationV2IndexDocumentArgs(
+            index_document=aws.s3.BucketWebsiteConfigurationIndexDocumentArgs(
                 suffix="index.html",
             ),
-            error_document=aws.s3.BucketWebsiteConfigurationV2ErrorDocumentArgs(
+            error_document=aws.s3.BucketWebsiteConfigurationErrorDocumentArgs(
                 key="index.html",  # SPA routing
             ),
             opts=child_opts,

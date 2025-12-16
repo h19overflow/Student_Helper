@@ -23,6 +23,7 @@ class VpcOutputs:
     private_subnet_id: pulumi.Output[str]
     lambda_subnet_id: pulumi.Output[str]
     data_subnet_id: pulumi.Output[str]
+    private_route_table_id: pulumi.Output[str]
 
 
 class VpcComponent(pulumi.ComponentResource):
@@ -109,6 +110,7 @@ class VpcComponent(pulumi.ComponentResource):
             "private_subnet_id": self.private_subnet.id,
             "lambda_subnet_id": self.lambda_subnet.id,
             "data_subnet_id": self.data_subnet.id,
+            "private_route_table_id": self.private_rt.id,
         })
 
     def _create_route_tables(
@@ -140,7 +142,7 @@ class VpcComponent(pulumi.ComponentResource):
 
         # Private route table (VPC-only routing)
         # All external access (Bedrock, etc.) goes through VPC Endpoints
-        private_rt = aws.ec2.RouteTable(
+        self.private_rt = aws.ec2.RouteTable(
             f"{name}-private-rt",
             vpc_id=self.vpc.id,
             routes=[],  # No default internet route - VPC Endpoints only
@@ -157,7 +159,7 @@ class VpcComponent(pulumi.ComponentResource):
             aws.ec2.RouteTableAssociation(
                 f"{name}-{subnet_name}-rt-assoc",
                 subnet_id=subnet.id,
-                route_table_id=private_rt.id,
+                route_table_id=self.private_rt.id,
                 opts=opts,
             )
 
@@ -168,4 +170,5 @@ class VpcComponent(pulumi.ComponentResource):
             private_subnet_id=self.private_subnet.id,
             lambda_subnet_id=self.lambda_subnet.id,
             data_subnet_id=self.data_subnet.id,
+            private_route_table_id=self.private_rt.id,
         )

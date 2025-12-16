@@ -103,6 +103,7 @@ def main() -> None:
         vpc_id=vpc_outputs.vpc_id,
         subnet_ids=[vpc_outputs.private_subnet_id, vpc_outputs.lambda_subnet_id],
         security_group_id=sg_outputs.endpoints_sg_id,
+        route_table_ids=[vpc_outputs.private_route_table_id],
     )
 
     rds = RdsPostgresComponent(
@@ -143,6 +144,7 @@ def main() -> None:
     cloudfront = CloudFrontComponent(
         name=base_name,
         environment=config.environment,
+        frontend_bucket_name=s3_outputs.frontend_bucket_name,
         frontend_bucket_arn=s3_outputs.frontend_bucket_arn,
         frontend_bucket_domain=s3_outputs.frontend_website_endpoint,
     )

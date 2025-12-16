@@ -1,0 +1,4 @@
+config:
+  student-helper-infra:environment: dev
+  student-helper-infra:domain: dev.local
+  aws-native:region: ap-southeast-2

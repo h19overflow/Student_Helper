@@ -24,6 +24,7 @@ class CloudFrontComponent(pulumi.ComponentResource):
         self,
         name: str,
         environment: str,
+        frontend_bucket_name: pulumi.Input[str],
         frontend_bucket_arn: pulumi.Input[str],
         frontend_bucket_domain: pulumi.Input[str],
         opts: pulumi.ResourceOptions | None = None,
@@ -97,13 +98,9 @@ class CloudFrontComponent(pulumi.ComponentResource):
         )
 
         # S3 bucket policy for CloudFront access
-        frontend_bucket_id = frontend_bucket_arn.apply(
-            lambda arn: arn.split(":")[-1]
-        )
-
         self.bucket_policy = aws.s3.BucketPolicy(
             f"{name}-bucket-policy",
-            bucket=frontend_bucket_id,
+            bucket=frontend_bucket_name,
             policy=pulumi.Output.all(
                 frontend_bucket_arn,
                 self.oai.iam_arn,
@@ -116,7 +113,7 @@ class CloudFrontComponent(pulumi.ComponentResource):
                     "Resource": "{args[0]}/*"
                 }}]
             }}"""),
-            opts=child_opts,
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[self.distribution]),
         )
 
         self.register_outputs({

@@ -19,12 +19,12 @@ class VectorStoreSettings(BaseSettings):
     index_name: str = Field(default="legal-search-vectors", description="S3 Vectors index name")
 
     embedding_model: str = Field(
-        default="text-embedding-004",
-        description="Gemini embedding model name",
+        default="amazon.titan-embed-text-v2:0",
+        description="Amazon Bedrock embedding model ID",
     )
     embedding_dimension: int = Field(
-        default=768,
-        description="Embedding vector dimension (768 for text-embedding-004)",
+        default=1536,
+        description="Embedding vector dimension (1536 for Amazon Titan v2)",
     )
 
     top_k: int = Field(default=5, description="Number of top results to retrieve")

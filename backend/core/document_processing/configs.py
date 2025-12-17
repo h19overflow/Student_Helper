@@ -64,6 +64,12 @@ class DocumentPipelineSettings(BaseSettings):
         description="S3 Vectors index name within the bucket",
     )
 
+    # S3 Documents bucket (for raw document storage)
+    documents_bucket: str = Field(
+        default="student-helper-dev-documents",
+        description="S3 bucket for raw document storage",
+    )
+
     # Database settings (for RDS status updates)
     database_url: str = Field(
         default="",

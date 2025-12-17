@@ -11,9 +11,11 @@ Instantiates all component resources in dependency order:
 """
 
 import pulumi
+import pulumi_aws as aws
 
 from IAC.configs.environment import get_config
 from IAC.utils.naming import ResourceNamer
+from IAC.utils.outputs import write_outputs_to_env
 
 # Networking
 from IAC.components.networking.vpc import VpcComponent
@@ -35,6 +37,7 @@ from IAC.components.messaging.sqs_queues import SqsQueuesComponent
 # Compute
 from IAC.components.compute.ec2_backend import Ec2BackendComponent
 from IAC.components.compute.lambda_processor import LambdaProcessorComponent
+from IAC.components.compute.alb import AlbComponent
 
 # Edge
 from IAC.components.edge.cloudfront import CloudFrontComponent
@@ -110,7 +113,7 @@ def main() -> None:
         name=base_name,
         environment=config.environment,
         config=config,
-        subnet_ids=[vpc_outputs.data_subnet_id],
+        subnet_ids=[vpc_outputs.data_subnet_id, vpc_outputs.data_subnet_id_b],
         security_group_id=sg_outputs.database_sg_id,
     )
     rds_outputs = rds.get_outputs()
@@ -125,6 +128,24 @@ def main() -> None:
         instance_profile_name=iam_roles.ec2_instance_profile.name,
     )
     ec2_outputs = ec2_backend.get_outputs()
+
+    # ALB for EC2 backend (required for API Gateway VPC Link)
+    alb = AlbComponent(
+        name=namer.name("backend"),
+        environment=config.environment,
+        vpc_id=vpc_outputs.vpc_id,
+        subnet_ids=[vpc_outputs.private_subnet_id, vpc_outputs.lambda_subnet_id],
+        security_group_id=sg_outputs.alb_sg_id,
+    )
+    alb_outputs = alb.get_outputs()
+
+    # Register EC2 with ALB target group
+    target_group_attachment = aws.lb.TargetGroupAttachment(
+        f"{base_name}-tg-attachment",
+        target_group_arn=alb_outputs.target_group_arn,
+        target_id=ec2_outputs.instance_id,
+        port=8000,
+    )
 
     lambda_processor = LambdaProcessorComponent(
         name=namer.name("doc-processor"),
@@ -153,26 +174,36 @@ def main() -> None:
         name=base_name,
         environment=config.environment,
         vpc_id=vpc_outputs.vpc_id,
-        subnet_ids=[vpc_outputs.private_subnet_id],
-        security_group_id=sg_outputs.backend_sg_id,
-        ec2_private_ip=ec2_outputs.private_ip,
+        subnet_ids=[vpc_outputs.private_subnet_id, vpc_outputs.lambda_subnet_id],
+        security_group_id=sg_outputs.alb_sg_id,
+        alb_listener_arn=alb_outputs.listener_arn,
     )
     api_outputs = api_gateway.get_outputs()
 
     # --- Exports ---
-    pulumi.export("vpc_id", vpc_outputs.vpc_id)
-    pulumi.export("ec2_instance_id", ec2_outputs.instance_id)
-    pulumi.export("ec2_private_ip", ec2_outputs.private_ip)
-    pulumi.export("lambda_function_name", lambda_outputs.function_name)
-    pulumi.export("lambda_ecr_repository", ecr_outputs.repository_url)
-    pulumi.export("rds_endpoint", rds_outputs.endpoint)
-    pulumi.export("documents_bucket", s3_outputs.documents_bucket_name)
-    pulumi.export("vectors_bucket", s3_outputs.vectors_bucket_name)
-    pulumi.export("vectors_index", s3_outputs.vectors_index_name)
-    pulumi.export("frontend_bucket", s3_outputs.frontend_bucket_name)
-    pulumi.export("sqs_queue_url", sqs_outputs.queue_url)
-    pulumi.export("api_endpoint", api_outputs.api_endpoint)
-    pulumi.export("cloudfront_domain", cloudfront.distribution.domain_name)
+    outputs = {
+        "vpc_id": vpc_outputs.vpc_id,
+        "ec2_instance_id": ec2_outputs.instance_id,
+        "ec2_private_ip": ec2_outputs.private_ip,
+        "alb_dns_name": alb_outputs.alb_dns_name,
+        "lambda_function_name": lambda_outputs.function_name,
+        "lambda_ecr_repository": ecr_outputs.repository_url,
+        "rds_endpoint": rds_outputs.endpoint,
+        "documents_bucket": s3_outputs.documents_bucket_name,
+        "vectors_bucket": s3_outputs.vectors_bucket_name,
+        "vectors_index": s3_outputs.vectors_index_name,
+        "frontend_bucket": s3_outputs.frontend_bucket_name,
+        "sqs_queue_url": sqs_outputs.queue_url,
+        "api_endpoint": api_outputs.api_endpoint,
+        "cloudfront_domain": cloudfront.distribution.domain_name,
+    }
+
+    # Write outputs to .env file for local development
+    write_outputs_to_env(outputs, "infrastructure.env")
+
+    # Export to Pulumi stack
+    for key, value in outputs.items():
+        pulumi.export(key, value)
 
 
 # Execute

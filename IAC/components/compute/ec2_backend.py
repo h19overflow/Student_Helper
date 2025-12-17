@@ -44,14 +44,14 @@ class Ec2BackendComponent(pulumi.ComponentResource):
 
         child_opts = pulumi.ResourceOptions(parent=self)
 
-        # Get latest Ubuntu 24.04 LTS AMI
+        # Get latest Amazon Linux 2023 ECS-optimized AMI (has Docker pre-installed)
         ami = aws.ec2.get_ami(
             most_recent=True,
-            owners=["099720109477"],  # Canonical
+            owners=["amazon"],
             filters=[
                 aws.ec2.GetAmiFilterArgs(
                     name="name",
-                    values=["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"],
+                    values=["al2023-ami-ecs-hvm-*-x86_64"],
                 ),
                 aws.ec2.GetAmiFilterArgs(
                     name="virtualization-type",
@@ -123,7 +123,7 @@ echo "Bootstrap complete"
             iam_instance_profile=instance_profile_name,
             user_data=user_data,
             root_block_device=aws.ec2.InstanceRootBlockDeviceArgs(
-                volume_size=20,
+                volume_size=30,
                 volume_type="gp3",
                 encrypted=True,
             ),

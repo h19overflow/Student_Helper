@@ -86,9 +86,76 @@ class VpcEndpointsComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
+        # SSM Interface Endpoints (required for Session Manager)
+        self.ssm_endpoint = aws.ec2.VpcEndpoint(
+            f"{name}-ssm-endpoint",
+            vpc_id=vpc_id,
+            service_name=f"com.amazonaws.{region.id}.ssm",
+            vpc_endpoint_type="Interface",
+            subnet_ids=subnet_ids,
+            security_group_ids=[security_group_id],
+            private_dns_enabled=True,
+            tags=create_tags(environment, f"{name}-ssm-endpoint"),
+            opts=child_opts,
+        )
+
+        self.ssmmessages_endpoint = aws.ec2.VpcEndpoint(
+            f"{name}-ssmmessages-endpoint",
+            vpc_id=vpc_id,
+            service_name=f"com.amazonaws.{region.id}.ssmmessages",
+            vpc_endpoint_type="Interface",
+            subnet_ids=subnet_ids,
+            security_group_ids=[security_group_id],
+            private_dns_enabled=True,
+            tags=create_tags(environment, f"{name}-ssmmessages-endpoint"),
+            opts=child_opts,
+        )
+
+        self.ec2messages_endpoint = aws.ec2.VpcEndpoint(
+            f"{name}-ec2messages-endpoint",
+            vpc_id=vpc_id,
+            service_name=f"com.amazonaws.{region.id}.ec2messages",
+            vpc_endpoint_type="Interface",
+            subnet_ids=subnet_ids,
+            security_group_ids=[security_group_id],
+            private_dns_enabled=True,
+            tags=create_tags(environment, f"{name}-ec2messages-endpoint"),
+            opts=child_opts,
+        )
+
+        # ECR Endpoints (required for Docker pull from ECR)
+        self.ecr_api_endpoint = aws.ec2.VpcEndpoint(
+            f"{name}-ecr-api-endpoint",
+            vpc_id=vpc_id,
+            service_name=f"com.amazonaws.{region.id}.ecr.api",
+            vpc_endpoint_type="Interface",
+            subnet_ids=subnet_ids,
+            security_group_ids=[security_group_id],
+            private_dns_enabled=True,
+            tags=create_tags(environment, f"{name}-ecr-api-endpoint"),
+            opts=child_opts,
+        )
+
+        self.ecr_dkr_endpoint = aws.ec2.VpcEndpoint(
+            f"{name}-ecr-dkr-endpoint",
+            vpc_id=vpc_id,
+            service_name=f"com.amazonaws.{region.id}.ecr.dkr",
+            vpc_endpoint_type="Interface",
+            subnet_ids=subnet_ids,
+            security_group_ids=[security_group_id],
+            private_dns_enabled=True,
+            tags=create_tags(environment, f"{name}-ecr-dkr-endpoint"),
+            opts=child_opts,
+        )
+
         self.register_outputs({
             "s3_endpoint_id": self.s3_endpoint.id,
             "sqs_endpoint_id": self.sqs_endpoint.id,
             "secrets_endpoint_id": self.secrets_endpoint.id,
             "bedrock_endpoint_id": self.bedrock_endpoint.id,
+            "ssm_endpoint_id": self.ssm_endpoint.id,
+            "ssmmessages_endpoint_id": self.ssmmessages_endpoint.id,
+            "ec2messages_endpoint_id": self.ec2messages_endpoint.id,
+            "ecr_api_endpoint_id": self.ecr_api_endpoint.id,
+            "ecr_dkr_endpoint_id": self.ecr_dkr_endpoint.id,
         })

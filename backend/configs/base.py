@@ -8,12 +8,19 @@ Dependencies: pydantic_settings
 System role: Foundation for all configuration classes
 """
 
-from pydantic_settings import BaseSettings as PydanticBaseSettings
+from pydantic_settings import BaseSettings as PydanticBaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
 class BaseSettings(PydanticBaseSettings):
     """Base configuration class with common settings."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     environment: str = Field(
         default="development",
@@ -27,11 +34,3 @@ class BaseSettings(PydanticBaseSettings):
         default="INFO",
         description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
     )
-
-    class Config:
-        """Pydantic config for environment variable loading."""
-
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-        extra = "ignore"

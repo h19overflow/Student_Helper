@@ -215,6 +215,19 @@ class SecurityGroupsComponent(pulumi.ComponentResource):
             opts=opts,
         )
 
+        # ALB: Allow outbound to self (VPC Link ENI → ALB on port 80)
+        # VPC Link uses the same security group as ALB
+        aws.vpc.SecurityGroupEgressRule(
+            f"{name}-alb-egress-self",
+            security_group_id=self.alb_sg.id,
+            ip_protocol="tcp",
+            from_port=PORTS["http"],
+            to_port=PORTS["http"],
+            referenced_security_group_id=self.alb_sg.id,
+            description="VPC Link to ALB (self-reference)",
+            opts=opts,
+        )
+
     def get_outputs(self) -> SecurityGroupOutputs:
         """Get security group output values."""
         return SecurityGroupOutputs(

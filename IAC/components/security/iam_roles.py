@@ -76,7 +76,15 @@ class IamRolesComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
-        # EC2 Policy - S3, SQS, Secrets Manager, CloudWatch
+        # Attach AWS managed policy for SSM (Session Manager)
+        aws.iam.RolePolicyAttachment(
+            f"{name}-ec2-ssm",
+            role=self.ec2_role.name,
+            policy_arn="arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
+            opts=child_opts,
+        )
+
+        # EC2 Policy - S3, SQS, Secrets Manager, CloudWatch, ECR
         ec2_policy = aws.iam.RolePolicy(
             f"{name}-ec2-policy",
             role=self.ec2_role.id,
@@ -129,6 +137,22 @@ class IamRolesComponent(pulumi.ComponentResource):
                             "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-*",
                             "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
                         ],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "ecr:GetAuthorizationToken",
+                        ],
+                        "Resource": ["*"],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "ecr:BatchCheckLayerAvailability",
+                            "ecr:GetDownloadUrlForLayer",
+                            "ecr:BatchGetImage",
+                        ],
+                        "Resource": ["arn:aws:ecr:*:*:repository/*"],
                     },
                 ],
             }),

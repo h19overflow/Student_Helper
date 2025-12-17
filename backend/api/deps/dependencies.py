@@ -109,3 +109,19 @@ def get_diagram_service() -> DiagramService:
         DiagramService: Diagram service instance
     """
     return DiagramService()
+
+
+def get_s3_document_client():
+    """
+    Get S3 document client for presigned URL generation.
+
+    Returns:
+        S3DocumentClient: Client for document bucket operations
+    """
+    from backend.boundary.aws.s3_client import S3DocumentClient
+
+    settings = get_settings()
+    return S3DocumentClient(
+        bucket=settings.s3_documents.bucket,
+        region=settings.s3_documents.region,
+    )

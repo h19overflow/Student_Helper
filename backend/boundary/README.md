@@ -56,10 +56,7 @@ backend/boundary/
 │
 └── vdb/                         # Vector database adapter layer
     ├── vector_schemas.py        # VectorMetadata, VectorQuery, VectorSearchResult
-    ├── vector_store_client.py   # Production S3 Vectors client
-    ├── faiss_store.py           # Local development FAISS store
-    ├── dev_task.py              # DevDocumentPipeline orchestrator
-    ├── research.md              # Architecture notes
+    ├── s3_vectors_store.py   # Production S3 Vectors client
     └── __init__.py              # Module exports
 ```
 
@@ -70,16 +67,17 @@ backend/boundary/
 ### 1. Base Classes ([base.py](db/base.py))
 
 **SQLAlchemy Setup:**
+
 ```python
 Base = declarative_base()  # ORM declarative base for all models
 ```
 
 **Mixins for Reusable Fields:**
 
-| Mixin | Purpose | Fields |
-|-------|---------|--------|
-| `UUIDMixin` | UUID primary keys | `id: UUID = Column(UUID, default=uuid4, primary_key=True)` |
-| `TimestampMixin` | Audit timestamps | `created_at: datetime`, `updated_at: datetime` |
+| Mixin            | Purpose           | Fields                                                     |
+| ---------------- | ----------------- | ---------------------------------------------------------- |
+| `UUIDMixin`      | UUID primary keys | `id: UUID = Column(UUID, default=uuid4, primary_key=True)` |
+| `TimestampMixin` | Audit timestamps  | `created_at: datetime`, `updated_at: datetime`             |
 
 **File:** [db/base.py](db/base.py:31-73)
 
@@ -88,6 +86,7 @@ Base = declarative_base()  # ORM declarative base for all models
 ### 2. Connection Management ([connection.py](db/connection.py))
 
 **Async Engine Setup:**
+
 ```python
 engine = create_async_engine(
     db_config.async_database_url,
@@ -100,6 +99,7 @@ engine = create_async_engine(
 ```
 
 **Session Factory:**
+
 ```python
 async_session_factory = sessionmaker(
     bind=engine,
@@ -110,6 +110,7 @@ async_session_factory = sessionmaker(
 ```
 
 **FastAPI Dependency:**
+
 ```python
 async def get_db() → AsyncSession:
     async with async_session_factory() as session:
@@ -118,6 +119,7 @@ async def get_db() → AsyncSession:
 ```
 
 **Pool Configuration:**
+
 - `pool_size=10` - Core pool connections
 - `max_overflow=20` - Additional temp connections
 - `pool_timeout=30` - Wait time before timeout
@@ -163,6 +165,7 @@ class DocumentModel(Base, UUIDMixin, TimestampMixin):
 ```
 
 **Lifecycle:**
+
 ```
 PENDING → PROCESSING → COMPLETED or FAILED
 ```
@@ -185,6 +188,7 @@ class JobModel(Base, UUIDMixin, TimestampMixin):
 ```
 
 **Enums:**
+
 - `JobType`: DOCUMENT_INGESTION, EVALUATION
 - `JobStatus`: PENDING, RUNNING, COMPLETED, FAILED
 
@@ -197,6 +201,7 @@ class JobModel(Base, UUIDMixin, TimestampMixin):
 #### BaseCRUD ([CRUD/base_crud.py](db/CRUD/base_crud.py:22-156))
 
 **Generic CRUD for any model:**
+
 ```python
 class BaseCRUD[ModelT](Generic[ModelT]):
     async def create(session: AsyncSession, **kwargs) → ModelT
@@ -216,6 +221,7 @@ class BaseCRUD[ModelT](Generic[ModelT]):
 #### SessionCRUD ([CRUD/session_crud.py](db/CRUD/session_crud.py:22-104))
 
 **Extends BaseCRUD with specialized queries:**
+
 ```python
 async def get_with_documents(id: UUID) → SessionModel  # Eager load
 async def update_metadata(id: UUID, metadata: dict) → SessionModel
@@ -230,6 +236,7 @@ async def update_metadata(id: UUID, metadata: dict) → SessionModel
 #### DocumentCRUD ([CRUD/document_crud.py](db/CRUD/document_crud.py))
 
 **Specialized queries:**
+
 ```python
 async def get_by_session_id(session_id: UUID) → list[DocumentModel]
 async def get_by_status(status: DocumentStatus) → list[DocumentModel]
@@ -247,6 +254,7 @@ async def mark_failed(id: UUID, error_message: str)
 #### JobCRUD ([CRUD/job_crud.py](db/CRUD/job_crud.py:21-207))
 
 **Specialized queries:**
+
 ```python
 async def get_by_task_id(task_id: str) → JobModel  # SQS correlation
 async def get_by_status(status: JobStatus) → list[JobModel]
@@ -264,6 +272,7 @@ async def mark_failed(id: UUID, error_details: dict)
 #### ChatHistoryCRUD ([CRUD/chat_history_crud.py](db/CRUD/chat_history_crud.py:23-176))
 
 **LangChain Integration (NOT SQLAlchemy):**
+
 ```python
 async def add_user_message(session_id: UUID, content: str)
 async def add_ai_message(session_id: UUID, content: str)
@@ -315,6 +324,7 @@ class VectorSearchResult(BaseModel):
 **Purpose:** AWS S3 Vectors integration for production
 
 **Interface:**
+
 ```python
 class VectorStoreClient:
     async def upsert_vectors(vectors: list[VectorEntry]) → None
@@ -323,6 +333,7 @@ class VectorStoreClient:
 ```
 
 **Key Features:**
+
 - Idempotent upsert (deterministic chunk IDs)
 - Metadata filtering (session_id, doc_id)
 - Error wrapping in `VectorStoreError`
@@ -336,6 +347,7 @@ class VectorStoreClient:
 **Purpose:** Local FAISS-based vector store for development
 
 **Interface (same as production):**
+
 ```python
 class FAISSStore:
     def add_documents(documents: list[Document], session_id: str, doc_id: str)
@@ -345,6 +357,7 @@ class FAISSStore:
 ```
 
 **Key Features:**
+
 - Persists to `.faiss_index/` directory
 - Bedrock Titan embeddings (768-dim)
 - Metadata filtering via LangChain
@@ -373,6 +386,7 @@ sequenceDiagram
 ```
 
 **Implementation:**
+
 ```python
 class DevDocumentPipeline:
     async def process(
@@ -393,6 +407,7 @@ class DevDocumentPipeline:
 ### Dependency Injection
 
 **Services request DB session:**
+
 ```python
 async def get_chat_service(
     db: AsyncSession = Depends(get_db)
@@ -401,6 +416,7 @@ async def get_chat_service(
 ```
 
 **CRUD singletons accessed within services:**
+
 ```python
 async def process_chat(self, session_id: UUID, message: str):
     session = await session_crud.get_by_id(self.db, session_id)
@@ -413,26 +429,31 @@ async def process_chat(self, session_id: UUID, message: str):
 ## Key Design Decisions
 
 ### 1. Repository Pattern
+
 - `BaseCRUD` provides generic operations
 - Entity-specific `SessionCRUD`, `DocumentCRUD`, etc. extend with specialized queries
 - Singletons (`session_crud = SessionCRUD()`) reused across application
 
 ### 2. Async-First
+
 - All CRUD operations use SQLAlchemy async API
 - Integrates seamlessly with FastAPI async endpoints
 - Connection pooling handles concurrent requests
 
 ### 3. Transaction Control
+
 - `autocommit=False, autoflush=False` → explicit transaction control
 - Services call CRUD methods, then commit or rollback at HTTP boundary
 - Prevents implicit side effects
 
 ### 4. Metadata as JSON
+
 - `SessionModel.session_metadata` stores arbitrary dicts
 - `JobModel.result` stores success/error details
 - Flexible without schema migrations
 
 ### 5. Cascade Delete
+
 - `DocumentModel` cascade deletes with session (FK constraint)
 - Prevents orphaned records automatically
 - Maintains referential integrity
@@ -441,22 +462,19 @@ async def process_chat(self, session_id: UUID, message: str):
 
 ## File Reference Map
 
-| File | Purpose | Key Lines |
-|------|---------|-----------|
-| [db/base.py](db/base.py) | Mixins & declarative base | 31-73 |
-| [db/connection.py](db/connection.py) | Engine, session factory | 20-103 |
-| [db/models/session_model.py](db/models/session_model.py) | Session ORM | 17-51 |
-| [db/models/document_model.py](db/models/document_model.py) | Document ORM | 19-94 |
-| [db/models/job_model.py](db/models/job_model.py) | Job ORM | 46-107 |
-| [db/CRUD/base_crud.py](db/CRUD/base_crud.py) | Generic CRUD | 22-156 |
-| [db/CRUD/session_crud.py](db/CRUD/session_crud.py) | Session queries | 22-104 |
-| [db/CRUD/document_crud.py](db/CRUD/document_crud.py) | Document queries | All |
-| [db/CRUD/job_crud.py](db/CRUD/job_crud.py) | Job queries | 21-207 |
-| [db/CRUD/chat_history_crud.py](db/CRUD/chat_history_crud.py) | Chat persistence | 23-176 |
-| [vdb/vector_schemas.py](vdb/vector_schemas.py) | Vector types | All |
-| [vdb/vector_store_client.py](vdb/vector_store_client.py) | S3 Vectors | All |
-| [vdb/faiss_store.py](vdb/faiss_store.py) | Local FAISS | All |
-| [vdb/dev_task.py](vdb/dev_task.py) | Pipeline | 23-188 |
+| File                                                         | Purpose                   | Key Lines |
+| ------------------------------------------------------------ | ------------------------- | --------- |
+| [db/base.py](db/base.py)                                     | Mixins & declarative base | 31-73     |
+| [db/connection.py](db/connection.py)                         | Engine, session factory   | 20-103    |
+| [db/models/session_model.py](db/models/session_model.py)     | Session ORM               | 17-51     |
+| [db/models/document_model.py](db/models/document_model.py)   | Document ORM              | 19-94     |
+| [db/models/job_model.py](db/models/job_model.py)             | Job ORM                   | 46-107    |
+| [db/CRUD/base_crud.py](db/CRUD/base_crud.py)                 | Generic CRUD              | 22-156    |
+| [db/CRUD/session_crud.py](db/CRUD/session_crud.py)           | Session queries           | 22-104    |
+| [db/CRUD/document_crud.py](db/CRUD/document_crud.py)         | Document queries          | All       |
+| [db/CRUD/job_crud.py](db/CRUD/job_crud.py)                   | Job queries               | 21-207    |
+| [db/CRUD/chat_history_crud.py](db/CRUD/chat_history_crud.py) | Chat persistence          | 23-176    |
+| [vdb/vector_schemas.py](vdb/vector_schemas.py)               | Vector types              | All       |
 
 ---
 
@@ -469,4 +487,4 @@ async def process_chat(self, session_id: UUID, message: str):
 
 ---
 
-*Generated documentation for Student Helper RAG application*
+_Generated documentation for Student Helper RAG application_

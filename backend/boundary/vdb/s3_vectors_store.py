@@ -13,7 +13,6 @@ from typing import Any
 
 from langchain_aws import BedrockEmbeddings
 from langchain_aws.vectorstores import AmazonS3Vectors
-from langchain_core.documents import Document
 
 from backend.boundary.vdb.vector_schemas import (
     VectorMetadata,

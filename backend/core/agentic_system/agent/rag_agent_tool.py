@@ -2,7 +2,7 @@
 RAG agent search tool.
 
 Defines the similarity search tool for retrieving relevant context.
-Wraps FAISSStore for agent tool calling.
+Wraps S3VectorsStore for agent tool calling.
 
 Dependencies: langchain.tools, backend.boundary.vdb
 System role: Search tool for RAG agent context retrieval
@@ -13,15 +13,15 @@ from typing import TYPE_CHECKING
 from langchain_core.tools import tool
 
 if TYPE_CHECKING:
-    from backend.boundary.vdb.faiss_store import FAISSStore
+    from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
 
 
-def create_search_tool(vector_store: "FAISSStore"):
+def create_search_tool(vector_store: "S3VectorsStore"):
     """
-    Create a search tool bound to a FAISSStore instance.
+    Create a search tool bound to a S3VectorsStore instance.
 
     Args:
-        vector_store: FAISSStore instance for similarity search
+        vector_store: S3VectorsStore instance for similarity search
 
     Returns:
         Callable: Tool function for similarity search

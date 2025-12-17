@@ -2,39 +2,24 @@
 Vector database boundary layer.
 
 Provides vector store clients for storage and retrieval operations.
-- VectorStoreClient: Production S3 Vectors client
-- FAISSStore: Local development FAISS client
+- S3VectorsStore: Production S3 Vectors client (LangChain integration)
 
-Dependencies: boto3, langchain_community, langchain_aws
+Dependencies: langchain_aws
 System role: Vector store adapter for RAG retrieval
 """
 
 from backend.boundary.vdb.vector_schemas import VectorQuery, VectorMetadata, VectorSearchResult
 
 
-def get_vector_store_client():
-    """Lazy import for VectorStoreClient to avoid circular imports."""
-    from backend.boundary.vdb.vector_store_client import VectorStoreClient
-    return VectorStoreClient
-
-
-def get_faiss_store():
-    """Lazy import for FAISSStore to avoid circular imports."""
-    from backend.boundary.vdb.faiss_store import FAISSStore
-    return FAISSStore
-
-
-def get_dev_pipeline():
-    """Lazy import for DevDocumentPipeline to avoid circular imports."""
-    from backend.boundary.vdb.dev_task import DevDocumentPipeline, DevPipelineResult
-    return DevDocumentPipeline, DevPipelineResult
+def get_s3_vectors_store():
+    """Lazy import for S3VectorsStore to avoid circular imports."""
+    from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
+    return S3VectorsStore
 
 
 __all__ = [
     "VectorQuery",
     "VectorMetadata",
     "VectorSearchResult",
-    "get_vector_store_client",
-    "get_faiss_store",
-    "get_dev_pipeline",
+    "get_s3_vectors_store",
 ]

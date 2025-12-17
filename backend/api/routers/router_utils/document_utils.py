@@ -2,7 +2,7 @@
 Document router utility functions.
 
 Contains background processing and cleanup helpers for document endpoints.
-Dependencies: backend.application.services, backend.boundary.db, backend.boundary.vdb
+Dependencies: backend.application.services, backend.boundary.db
 System role: Document processing utilities
 """
 
@@ -63,7 +63,7 @@ async def process_document_background(
     from backend.application.services.document_service import DocumentService
     from backend.application.services.job_service import JobService
     from backend.boundary.db.connection import get_async_session_factory
-    from backend.boundary.vdb.dev_task import DevDocumentPipeline
+    from backend.core.document_processing.entrypoint import DocumentPipeline
 
     logger.info(
         "Starting background document processing",
@@ -82,12 +82,8 @@ async def process_document_background(
         async with SessionFactory() as db:
             try:
                 # Create services with fresh session
-                dev_pipeline = DevDocumentPipeline(
-                    chunk_size=1000,
-                    chunk_overlap=200,
-                    persist_directory=".faiss_index",
-                )
-                document_service = DocumentService(db=db, dev_pipeline=dev_pipeline)
+                pipeline = DocumentPipeline()
+                document_service = DocumentService(db=db, pipeline=pipeline)
                 job_service = JobService(db=db)
 
                 # Mark job as running
@@ -107,10 +103,10 @@ async def process_document_background(
 
                 # Mark job as completed
                 result_data = {
-                    "document_id": str(result.document_id) if hasattr(result, 'document_id') else None,
-                    "chunk_count": result.chunk_count if hasattr(result, 'chunk_count') else 0,
-                    "processing_time_ms": result.processing_time_ms if hasattr(result, 'processing_time_ms') else 0,
-                    "index_path": result.index_path if hasattr(result, 'index_path') else None,
+                    "document_id": result.document_id,
+                    "chunk_count": result.chunk_count,
+                    "processing_time_ms": result.processing_time_ms,
+                    "output_path": result.output_path,
                 }
                 logger.info(
                     "Document processing completed",

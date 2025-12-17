@@ -1,8 +1,8 @@
 """
 Document service orchestrator.
 
-Wraps DevDocumentPipeline for S3 Vectors compatibility.
 Coordinates document upload, processing, search, and deletion.
+Uses DocumentPipeline for S3 Vectors integration.
 
 Dependencies: backend.boundary.vdb, backend.boundary.db, backend.core
 System role: Document management orchestration
@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.boundary.db.CRUD.document_crud import document_crud
 from backend.boundary.db.CRUD.session_crud import session_crud
 from backend.boundary.db.models.document_model import DocumentStatus
-from backend.boundary.vdb.dev_task import DevDocumentPipeline, DevPipelineResult
-from backend.boundary.vdb.faiss_store import FAISSStore
+from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
+from backend.core.document_processing.entrypoint import DocumentPipeline
+from backend.core.document_processing.models import PipelineResult
 from backend.core.exceptions import ParsingError
 
 
@@ -24,38 +25,55 @@ class DocumentService:
     """
     Document service orchestrator.
 
-    Wraps DevDocumentPipeline to provide S3 Vectors-compatible interface.
+    Uses DocumentPipeline for S3 Vectors upload and S3VectorsStore for retrieval.
     Handles document lifecycle: upload, processing, search, deletion.
     """
 
     def __init__(
         self,
         db: AsyncSession,
-        dev_pipeline: DevDocumentPipeline | None = None,
+        pipeline: DocumentPipeline | None = None,
+        vector_store: S3VectorsStore | None = None,
     ) -> None:
         """
         Initialize document service.
 
         Args:
             db: AsyncSession for document metadata tracking
-            dev_pipeline: Optional DevDocumentPipeline (created if None)
+            pipeline: Optional DocumentPipeline (created if None)
+            vector_store: Optional S3VectorsStore for search (created if None)
         """
         self.db = db
-        self.pipeline = dev_pipeline or DevDocumentPipeline()
+        self._pipeline = pipeline
+        self._vector_store = vector_store
+
+    @property
+    def pipeline(self) -> DocumentPipeline:
+        """Lazy-load pipeline to avoid initialization cost."""
+        if self._pipeline is None:
+            self._pipeline = DocumentPipeline()
+        return self._pipeline
+
+    @property
+    def vector_store(self) -> S3VectorsStore:
+        """Lazy-load vector store to avoid initialization cost."""
+        if self._vector_store is None:
+            self._vector_store = S3VectorsStore()
+        return self._vector_store
 
     async def upload_document(
         self,
         file_path: str,
         session_id: UUID,
         document_name: str,
-    ) -> DevPipelineResult:
+    ) -> PipelineResult:
         """
         Upload and process document through pipeline.
 
         Steps:
         1. Validate session exists
         2. Create document record in DB with PENDING status
-        3. Process via pipeline (parse → chunk → embed → index)
+        3. Process via pipeline (parse → chunk → embed+upload to S3 Vectors)
         4. Update document status to COMPLETED
         5. Return processing result
 
@@ -65,7 +83,7 @@ class DocumentService:
             document_name: Document filename/name
 
         Returns:
-            DevPipelineResult: Processing result with chunk count and timing
+            PipelineResult: Processing result with chunk count and timing
 
         Raises:
             ValueError: If session doesn't exist
@@ -124,7 +142,7 @@ class DocumentService:
         doc_id: UUID | None = None,
     ) -> list[dict]:
         """
-        Search indexed documents (matches S3 Vectors interface).
+        Search indexed documents via S3 Vectors.
 
         Args:
             query: Search query text
@@ -135,12 +153,20 @@ class DocumentService:
         Returns:
             list[dict]: Search results with content, score, metadata
         """
-        return self.pipeline.search(
+        results = self.vector_store.similarity_search(
             query=query,
             k=k,
             session_id=str(session_id),
             doc_id=str(doc_id) if doc_id else None,
         )
+        return [
+            {
+                "content": r.content,
+                "score": r.similarity_score,
+                "metadata": r.metadata.model_dump(),
+            }
+            for r in results
+        ]
 
     async def get_session_documents(self, session_id: UUID):
         """
@@ -161,7 +187,7 @@ class DocumentService:
 
         Steps:
         1. Validate document exists and belongs to session
-        2. Delete from vector store (FAISSStore.delete_by_doc_id)
+        2. Delete from S3 Vectors
         3. Delete document record from DB
 
         Args:
@@ -182,29 +208,12 @@ class DocumentService:
                 f"Document {doc_id} does not belong to session {session_id}"
             )
 
-        # Delete from vector store
-        # Access FAISSStore directly from pipeline
-        if hasattr(self.pipeline, "_faiss_store"):
-            self.pipeline._faiss_store.delete_by_doc_id(str(doc_id))
+        # TODO: Get chunk_ids for document and delete from S3 Vectors
+        # This requires storing chunk_ids in document metadata
+        # self.vector_store.delete_by_doc_id(str(doc_id), chunk_ids)
 
         # Delete document record
         await document_crud.delete_by_id(self.db, doc_id)
-
-    def clear_session_index(self, session_id: UUID) -> None:
-        """
-        Clear all vectors for a session.
-
-        Note: FAISSStore doesn't support session-level clear.
-        Iterates through session documents and deletes each.
-
-        Args:
-            session_id: Session UUID
-        """
-        # Get all documents for session
-        # Note: This needs to be async, but current signature is sync
-        # This is a limitation of the current FAISSStore design
-        # For production with S3 Vectors, this would be a single operation
-        self.pipeline.clear_index()
 
 
 

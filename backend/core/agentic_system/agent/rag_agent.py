@@ -1,7 +1,7 @@
 """
 RAG Q&A agent implementation.
 
-Agent for answering questions with citations using FAISSStore retrieval.
+Agent for answering questions with citations using S3VectorsStore retrieval.
 Uses LangChain v1 create_agent with structured output.
 Supports Langfuse prompt registry integration for versioned prompts.
 Supports streaming via astream() method for WebSocket chat.
@@ -17,7 +17,7 @@ from langchain.agents.structured_output import ToolStrategy
 from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import BaseMessage
 
-from backend.boundary.vdb.faiss_store import FAISSStore
+from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
 from backend.core.agentic_system.agent.rag_agent_prompt import (
     get_rag_prompt,
     register_rag_prompt,
@@ -31,14 +31,14 @@ class RAGAgent:
     """
     RAG Q&A agent with citation support.
 
-    Uses LangChain create_agent with FAISSStore for retrieval
+    Uses LangChain create_agent with S3VectorsStore for retrieval
     and returns structured responses with citations.
     Supports Langfuse prompt registry for versioned prompt management.
     """
 
     def __init__(
         self,
-        vector_store: FAISSStore,
+        vector_store: S3VectorsStore,
         model_id: str = "global.anthropic.claude-haiku-4-5-20251001-v1:0",
         region: str = "ap-southeast-2",
         temperature: float = 0.0,
@@ -49,7 +49,7 @@ class RAGAgent:
         Initialize RAG agent with vector store and model.
 
         Args:
-            vector_store: FAISSStore instance for retrieval
+            vector_store: S3VectorsStore instance for retrieval
             model_id: Bedrock model identifier
             region: AWS region for Bedrock
             temperature: Model temperature (0.0 for deterministic)
@@ -314,12 +314,9 @@ relevance_score: {result.similarity_score:.3f}
 
 
 if __name__ == "__main__":
-    from backend.boundary.vdb.faiss_store import FAISSStore
-    from backend.core.agentic_system.agent.rag_agent import RAGAgent
-    from backend.core.agentic_system.agent.rag_agent_prompt import register_rag_prompt
-    from backend.core.agentic_system.agent.rag_agent_tool import create_search_tool
+    from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
 
-    vector_store = FAISSStore()
+    vector_store = S3VectorsStore()
     agent = RAGAgent(vector_store)
     result = agent.invoke("What does hamza do , and how many projects does he have?")
     print(result)

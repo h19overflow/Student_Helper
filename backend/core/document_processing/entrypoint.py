@@ -1,7 +1,8 @@
 """
 Document pipeline orchestrator.
 
-Coordinates parsing, chunking, embedding, and saving tasks.
+Coordinates parsing, chunking, and S3 Vectors upload tasks.
+VectorStoreTask handles embedding generation via Bedrock internally.
 
 Dependencies: All task modules, configs
 System role: Pipeline orchestration (coordinates only)
@@ -17,14 +18,13 @@ from .configs import (
 from .models import PipelineResult
 from .tasks import (
     ChunkingTask,
-    EmbeddingTask,
     ParsingTask,
     VectorStoreTask,
 )
 
 
 class DocumentPipeline:
-    """Orchestrate document ingestion: parse -> chunk -> embed -> save."""
+    """Orchestrate document ingestion: parse -> chunk -> embed+upload."""
 
     def __init__(self, settings: DocumentPipelineSettings | None = None) -> None:
         """
@@ -40,13 +40,11 @@ class DocumentPipeline:
             chunk_size=self._settings.chunk_size,
             chunk_overlap=self._settings.chunk_overlap,
         )
-        self._embedding_task = EmbeddingTask(
-            model_id=self._settings.embedding_model_id,
-            region=self._settings.bedrock_region,
-        )
         self._vector_store_task = VectorStoreTask(
             vectors_bucket=self._settings.vectors_bucket,
+            index_name=self._settings.vectors_index,
             region=self._settings.bedrock_region,
+            embedding_model_id=self._settings.embedding_model_id,
         )
 
     def process(
@@ -69,7 +67,7 @@ class DocumentPipeline:
         Raises:
             ParsingError: Document parsing failed
             ValueError: Chunking failed
-            EmbeddingError: Embedding generation failed
+            VectorStoreUploadError: S3 Vectors upload failed
         """
         start_time = time.perf_counter()
         doc_id = document_id or str(uuid.uuid4())
@@ -81,18 +79,15 @@ class DocumentPipeline:
         # Chunk documents
         chunked_documents = self._chunking_task.chunk(documents)
 
-        # Generate embeddings
-        chunks = self._embedding_task.embed(chunked_documents)
-
-        # Upload to S3 Vectors (TODO: implement upload logic)
-        self._vector_store_task.upload(chunks, doc_id, sess_id)
-        output_path = f"s3vectors://{self._settings.vectors_bucket}/{doc_id}"
+        # Upload to S3 Vectors (embedding generated internally)
+        chunk_ids = self._vector_store_task.upload(chunked_documents, doc_id, sess_id)
+        output_path = f"s3vectors://{self._settings.vectors_bucket}/{self._settings.vectors_index}/{doc_id}"
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
         return PipelineResult(
             document_id=doc_id,
-            chunk_count=len(chunks),
+            chunk_count=len(chunk_ids),
             output_path=output_path,
             processing_time_ms=elapsed_ms,
         )
@@ -108,6 +103,7 @@ class DocumentPipeline:
             list[PipelineResult]: Results for each document
         """
         return [self.process(path) for path in file_paths]
+
 
 if __name__ == "__main__":
     pipeline = DocumentPipeline()

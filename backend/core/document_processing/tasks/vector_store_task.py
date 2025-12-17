@@ -8,13 +8,12 @@ Dependencies: langchain_aws, langchain_core
 System role: Final stage of document ingestion pipeline
 """
 
+import hashlib
 import logging
-from typing import List
 
+from langchain_aws import BedrockEmbeddings
 from langchain_aws.vectorstores import AmazonS3Vectors
 from langchain_core.documents import Document
-
-from ..models.chunk import Chunk
 
 logger = logging.getLogger(__name__)
 
@@ -28,21 +27,23 @@ class VectorStoreUploadError(Exception):
 
 
 class VectorStoreTask:
-    """Upload document chunks to S3 Vectors."""
+    """Upload document chunks to S3 Vectors with automatic embedding."""
 
     def __init__(
         self,
         vectors_bucket: str,
         index_name: str = "documents",
         region: str = "ap-southeast-2",
+        embedding_model_id: str = "amazon.titan-embed-text-v2:0",
     ) -> None:
         """
-        Initialize vector store task.
+        Initialize vector store task with S3 Vectors and Bedrock embeddings.
 
         Args:
             vectors_bucket: S3 Vectors bucket name
             index_name: Index name within the bucket
-            region: AWS region
+            region: AWS region for both S3 Vectors and Bedrock
+            embedding_model_id: Bedrock embedding model ID
 
         Raises:
             ValueError: When vectors_bucket or index_name is empty
@@ -55,6 +56,11 @@ class VectorStoreTask:
         self.vectors_bucket = vectors_bucket
         self.index_name = index_name
         self.region = region
+
+        self._embeddings = BedrockEmbeddings(
+            model_id=embedding_model_id,
+            region_name=region,
+        )
         self._vector_store: AmazonS3Vectors | None = None
 
     def _get_vector_store(self) -> AmazonS3Vectors:
@@ -62,75 +68,85 @@ class VectorStoreTask:
         Get or create S3 Vectors store instance.
 
         Returns:
-            AmazonS3Vectors: Initialized vector store
-
-        Note:
-            S3 Vectors handles embeddings internally, so we don't need
-            to pass an embedding model. The embeddings are pre-computed
-            in the EmbeddingTask.
+            AmazonS3Vectors: Initialized vector store with embeddings
         """
         if self._vector_store is None:
             self._vector_store = AmazonS3Vectors(
                 vector_bucket_name=self.vectors_bucket,
                 index_name=self.index_name,
+                embedding=self._embeddings,
                 region_name=self.region,
             )
         return self._vector_store
 
+    def _generate_chunk_id(self, content: str, metadata: dict) -> str:
+        """
+        Generate deterministic chunk ID from content and metadata.
+
+        Args:
+            content: Chunk text content
+            metadata: Chunk metadata
+
+        Returns:
+            str: SHA-256 hash prefix (16 chars)
+        """
+        source = metadata.get("source", "")
+        start_index = metadata.get("start_index", 0)
+        hash_input = f"{content}:{source}:{start_index}"
+        return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
+
     def upload(
         self,
-        chunks: List[Chunk],
+        documents: list[Document],
         document_id: str,
         session_id: str,
     ) -> list[str]:
         """
-        Upload chunks to S3 Vectors with session isolation.
+        Upload documents to S3 Vectors with session isolation.
+
+        Generates embeddings via Bedrock and uploads to S3 Vectors index.
+        Each document gets metadata for session filtering during retrieval.
 
         Args:
-            chunks: List of chunks with pre-computed embeddings
+            documents: LangChain Documents (chunked text)
             document_id: Document UUID for grouping chunks
             session_id: Session UUID for multi-tenant isolation
 
         Returns:
-            list[str]: List of uploaded chunk IDs
+            list[str]: List of generated chunk IDs
 
         Raises:
-            ValueError: When chunks list is empty or missing embeddings
+            ValueError: When documents list is empty
             VectorStoreUploadError: When upload to S3 Vectors fails
         """
-        if not chunks:
-            raise ValueError("No chunks to upload")
+        if not documents:
+            raise ValueError("No documents to upload")
 
-        documents = []
-        for chunk in chunks:
-            if chunk.embedding is None:
-                raise ValueError(f"Chunk {chunk.id} missing embedding vector")
+        chunk_ids = []
+        for i, doc in enumerate(documents):
+            chunk_id = self._generate_chunk_id(doc.page_content, doc.metadata)
+            chunk_ids.append(chunk_id)
 
-            doc = Document(
-                page_content=chunk.content,
-                metadata={
-                    "chunk_id": chunk.id,
-                    "session_id": session_id,
-                    "doc_id": document_id,
-                    "page": chunk.metadata.get("page"),
-                    "section": chunk.metadata.get("section"),
-                    "source_uri": chunk.metadata.get("source", ""),
-                },
-            )
-            documents.append(doc)
+            doc.metadata.update({
+                "chunk_id": chunk_id,
+                "chunk_index": i,
+                "session_id": session_id,
+                "doc_id": document_id,
+                "source_uri": doc.metadata.get("source", ""),
+            })
 
         try:
             vector_store = self._get_vector_store()
 
             ids = vector_store.add_documents(
                 documents=documents,
-                ids=[chunk.id for chunk in chunks],
+                ids=chunk_ids,
             )
 
             logger.info(
-                "Uploaded chunks to S3 Vectors",
+                "Uploaded documents to S3 Vectors",
                 extra={
-                    "chunk_count": len(chunks),
+                    "chunk_count": len(documents),
                     "document_id": document_id,
                     "session_id": session_id,
                     "bucket": self.vectors_bucket,
@@ -142,7 +158,7 @@ class VectorStoreTask:
 
         except Exception as e:
             logger.exception(
-                "Failed to upload chunks to S3 Vectors",
+                "Failed to upload documents to S3 Vectors",
                 extra={
                     "document_id": document_id,
                     "session_id": session_id,
@@ -154,7 +170,7 @@ class VectorStoreTask:
                 details={
                     "document_id": document_id,
                     "session_id": session_id,
-                    "chunk_count": len(chunks),
+                    "chunk_count": len(documents),
                 },
             ) from e
 

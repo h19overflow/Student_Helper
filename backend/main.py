@@ -16,7 +16,6 @@ from backend.configs import get_settings
 from backend.api import api_router
 from backend.api.routers import (
     chat_stream_router,
-    diagrams_router,
     documents_router,
     health_router,
     jobs_router,
@@ -46,18 +45,18 @@ async def lifespan(app: FastAPI):
 
     # Initialize expensive resources once at startup
     try:
-        from backend.boundary.vdb.faiss_store import FAISSStore
+        from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
         from backend.core.agentic_system.agent.rag_agent import RAGAgent
 
-        logger.info("Initializing vector store and RAG agent")
+        logger.info("Initializing S3 Vectors store and RAG agent")
 
         # Create vector store (reused across all requests)
-        vector_store = FAISSStore(
-            persist_directory=".faiss_index",
-            model_id="amazon.titan-embed-text-v2:0",
-            region="us-east-1",
+        vector_store = S3VectorsStore(
+            vectors_bucket="student-helper-dev-vectors",
+            index_name="documents",
+            region="ap-southeast-2",
         )
-        logger.info("Vector store initialized")
+        logger.info("S3 Vectors store initialized")
 
         # Create RAG agent (reused across all requests)
         rag_agent = RAGAgent(
@@ -125,7 +124,6 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router, prefix="/api/v1")
     app.include_router(sessions_router, prefix="/api/v1")
     app.include_router(documents_router, prefix="/api/v1")
-    app.include_router(diagrams_router, prefix="/api/v1")
 
     return app
 

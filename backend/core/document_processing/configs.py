@@ -36,12 +36,12 @@ class DocumentPipelineSettings(BaseSettings):
 
     # AWS Bedrock settings
     bedrock_region: str = Field(
-        default="us-east-1",
+        default="ap-southeast-2",
         description="AWS region for Bedrock",
     )
     embedding_model_id: str = Field(
         default="amazon.titan-embed-text-v2:0",
-        description="Amazon Titan Embeddings v2 model ID (1536 dimensions)",
+        description="Amazon Titan Embeddings v2 model ID (1024 dimensions)",
     )
 
     # Chunking settings
@@ -56,8 +56,12 @@ class DocumentPipelineSettings(BaseSettings):
 
     # S3 Vectors settings
     vectors_bucket: str = Field(
-        default="",
+        default="student-helper-dev-vectors",
         description="S3 Vectors bucket name",
+    )
+    vectors_index: str = Field(
+        default="documents",
+        description="S3 Vectors index name within the bucket",
     )
 
     # Database settings (for RDS status updates)

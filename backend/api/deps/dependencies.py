@@ -49,16 +49,10 @@ def get_document_service(db: AsyncSession = Depends(get_async_db)) -> DocumentSe
         db: Async database session (injected via Depends)
 
     Returns:
-        DocumentService: Document service instance with DevDocumentPipeline
+        DocumentService: Document service instance with S3 Vectors pipeline
     """
-    from backend.boundary.vdb.dev_task import DevDocumentPipeline
-
-    dev_pipeline = DevDocumentPipeline(
-        chunk_size=1000,
-        chunk_overlap=200,
-        persist_directory=".faiss_index",
-    )
-    return DocumentService(db=db, dev_pipeline=dev_pipeline)
+    # Pipeline and vector store are lazy-loaded in DocumentService
+    return DocumentService(db=db)
 
 
 def get_job_service(db: AsyncSession = Depends(get_async_db)) -> JobService:
@@ -84,15 +78,15 @@ def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     Returns:
         ChatService: Chat service with configured RAG agent
     """
-    # Lazy import to avoid loading torch/transformers at startup
+    # Lazy import to avoid loading heavy dependencies at startup
     from backend.application.services import ChatService
-    from backend.boundary.vdb.faiss_store import FAISSStore
+    from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
     from backend.core.agentic_system.agent.rag_agent import RAGAgent
 
     # Create vector store
-    vector_store = FAISSStore(
-        persist_directory=".faiss_index",
-        model_id="amazon.titan-embed-text-v2:0",
+    vector_store = S3VectorsStore(
+        vectors_bucket="student-helper-dev-vectors",
+        index_name="documents",
         region="ap-southeast-2",
     )
 

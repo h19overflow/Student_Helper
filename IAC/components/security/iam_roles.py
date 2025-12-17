@@ -136,6 +136,7 @@ class IamRolesComponent(pulumi.ComponentResource):
                         "Resource": [
                             "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-*",
                             "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+                            "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0",
                         ],
                     },
                     {

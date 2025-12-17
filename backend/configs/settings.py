@@ -14,6 +14,7 @@ from backend.configs.base import BaseSettings
 from backend.configs.database import DatabaseSettings
 from backend.configs.vector_store import VectorStoreSettings
 from backend.configs.observability import ObservabilitySettings
+from backend.configs.s3_documents import S3DocumentsSettings
 
 
 class Settings(BaseSettings):
@@ -23,6 +24,7 @@ class Settings(BaseSettings):
     database: DatabaseSettings = DatabaseSettings()
     vector_store: VectorStoreSettings = VectorStoreSettings()
     observability: ObservabilitySettings = ObservabilitySettings()
+    s3_documents: S3DocumentsSettings = S3DocumentsSettings()
 
 
 @lru_cache

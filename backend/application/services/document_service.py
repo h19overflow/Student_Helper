@@ -220,11 +220,22 @@ class DocumentService:
                 f"Document {doc_id} does not belong to session {session_id}"
             )
 
-        # TODO: Get chunk_ids for document and delete from S3 Vectors
-        # This requires storing chunk_ids in document metadata
-        # self.vector_store.delete_by_doc_id(str(doc_id), chunk_ids)
+        # Query S3 Vectors for all chunks belonging to this document
+        # Use a dummy query since we're filtering by doc_id metadata
+        search_results = self.vector_store.similarity_search(
+            query="",
+            k=1000,  # Get all chunks for this document
+            doc_id=str(doc_id),
+        )
 
-        # Delete document record
+        # Extract chunk IDs from search results
+        chunk_ids = [result.chunk_id for result in search_results]
+
+        # Delete chunks from S3 Vectors if any exist
+        if chunk_ids:
+            self.vector_store.delete_by_doc_id(str(doc_id), chunk_ids)
+
+        # Delete document record from database
         await document_crud.delete_by_id(self.db, doc_id)
 
 

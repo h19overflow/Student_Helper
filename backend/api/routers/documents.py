@@ -176,10 +176,64 @@ async def document_uploaded_to_s3(
         raise HTTPException(status_code=500, detail="Failed to process upload notification")
 
 
+@router.delete("/{session_id}/docs/{doc_id}", status_code=204)
+async def delete_document(
+    session_id: UUID,
+    doc_id: UUID,
+    document_service: DocumentService = Depends(get_document_service),
+) -> None:
+    """
+    Delete document from session.
+
+    Removes document from both S3 Vectors and database.
+    All chunks associated with the document are deleted from the vector store.
+
+    Args:
+        session_id: Session UUID
+        doc_id: Document UUID to delete
+        document_service: Injected DocumentService
+
+    Returns:
+        204 No Content on success
+
+    Raises:
+        HTTPException(404): Document not found or doesn't belong to session
+        HTTPException(500): Deletion failed
+    """
+    logger.info(
+        "Document deletion request",
+        extra={"session_id": str(session_id), "doc_id": str(doc_id)},
+    )
+
+    try:
+        await document_service.delete_document(
+            doc_id=doc_id,
+            session_id=session_id,
+        )
+
+        logger.info(
+            "Document deleted successfully",
+            extra={"session_id": str(session_id), "doc_id": str(doc_id)},
+        )
+
+    except ValueError as e:
+        logger.warning(
+            "Document deletion validation failed",
+            extra={"session_id": str(session_id), "doc_id": str(doc_id), "error": str(e)},
+        )
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(
+            "Failed to delete document",
+            extra={"session_id": str(session_id), "doc_id": str(doc_id), "error": str(e)},
+        )
+        raise HTTPException(status_code=500, detail="Failed to delete document")
+
+
 @router.get("/{session_id}/docs", response_model=DocumentListResponse)
 async def get_documents(
     session_id: UUID,
-    cursor: str | None = None,
+    _cursor: str | None = None,  # Reserved for future pagination
     document_service: DocumentService = Depends(get_document_service),
 ) -> DocumentListResponse:
     """
@@ -187,7 +241,7 @@ async def get_documents(
 
     Args:
         session_id: Session UUID
-        cursor: Optional pagination cursor
+        _cursor: Optional pagination cursor (reserved for future use)
         document_service: Injected DocumentService
 
     Returns:
@@ -208,8 +262,8 @@ async def get_documents(
 
         documents = [
             DocumentResponse(
-                id=doc.id,
-                session_id=doc.session_id,
+                id=UUID(str(doc.id)),
+                session_id=UUID(str(doc.session_id)),
                 name=doc.name,
                 status=doc.status.value if hasattr(doc.status, "value") else doc.status,
                 created_at=doc.created_at,

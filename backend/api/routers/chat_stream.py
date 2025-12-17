@@ -15,7 +15,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.application.services.chat_service import ChatService
 from backend.models.streaming import (
     ClientEventType,
     StreamEventType,

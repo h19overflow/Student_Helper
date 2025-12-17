@@ -3,8 +3,8 @@ API Gateway component for backend routing.
 
 Creates:
 - HTTP API (API Gateway v2)
-- VPC Link for private EC2 access
-- Routes proxying to FastAPI backend
+- VPC Link for private ALB access
+- Routes proxying to FastAPI backend via ALB
 """
 
 from dataclasses import dataclass
@@ -24,9 +24,9 @@ class ApiGatewayOutputs:
 
 class ApiGatewayComponent(pulumi.ComponentResource):
     """
-    HTTP API Gateway with VPC Link to EC2 backend.
+    HTTP API Gateway with VPC Link to ALB.
 
-    Routes all requests to FastAPI application running on EC2.
+    Routes all requests to FastAPI application via internal ALB.
     """
 
     def __init__(
@@ -36,7 +36,7 @@ class ApiGatewayComponent(pulumi.ComponentResource):
         vpc_id: pulumi.Input[str],
         subnet_ids: list[pulumi.Input[str]],
         security_group_id: pulumi.Input[str],
-        ec2_private_ip: pulumi.Input[str],
+        alb_listener_arn: pulumi.Input[str],
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("custom:edge:ApiGateway", name, None, opts)
@@ -68,15 +68,13 @@ class ApiGatewayComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
-        # Integration with EC2 via VPC Link
+        # Integration with ALB via VPC Link
         self.integration = aws.apigatewayv2.Integration(
             f"{name}-integration",
             api_id=self.api.id,
             integration_type="HTTP_PROXY",
             integration_method="ANY",
-            integration_uri=ec2_private_ip.apply(
-                lambda ip: f"http://{ip}:8000/{{proxy}}"
-            ),
+            integration_uri=alb_listener_arn,
             connection_type="VPC_LINK",
             connection_id=self.vpc_link.id,
             opts=child_opts,
@@ -87,6 +85,15 @@ class ApiGatewayComponent(pulumi.ComponentResource):
             f"{name}-route",
             api_id=self.api.id,
             route_key="ANY /{proxy+}",
+            target=self.integration.id.apply(lambda id: f"integrations/{id}"),
+            opts=child_opts,
+        )
+
+        # Root route (for /api/v1/health etc without proxy)
+        self.root_route = aws.apigatewayv2.Route(
+            f"{name}-root-route",
+            api_id=self.api.id,
+            route_key="ANY /",
             target=self.integration.id.apply(lambda id: f"integrations/{id}"),
             opts=child_opts,
         )

@@ -13,7 +13,8 @@ VPC_CIDR: Final[str] = "10.0.0.0/16"
 SUBNET_CIDRS: Final[dict[str, str]] = {
     "private": "10.0.1.0/24",  # EC2 Backend
     "lambda": "10.0.2.0/24",   # Lambda Processor
-    "data": "10.0.3.0/24",     # RDS PostgreSQL
+    "data": "10.0.3.0/24",     # RDS PostgreSQL (AZ-a)
+    "data_b": "10.0.4.0/24",   # RDS PostgreSQL (AZ-b)
 }
 
 # Availability zones (ap-southeast-2)

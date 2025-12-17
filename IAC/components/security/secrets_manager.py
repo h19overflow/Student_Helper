@@ -38,8 +38,9 @@ class SecretsManagerComponent(pulumi.ComponentResource):
         # Google API Key secret
         self.google_api_key = aws.secretsmanager.Secret(
             f"{name}-google-api-key",
-            name=namer.secret_name("google-api-key"),
+            name=namer.secret_name("google-api-key-v3"),
             description="Google API key for text-embedding-004",
+            recovery_window_in_days=0,  # Immediate deletion (dev only)
             tags=create_tags(environment, f"{name}-google-api-key"),
             opts=child_opts,
         )
@@ -55,8 +56,9 @@ class SecretsManagerComponent(pulumi.ComponentResource):
         # Anthropic API Key secret
         self.anthropic_api_key = aws.secretsmanager.Secret(
             f"{name}-anthropic-api-key",
-            name=namer.secret_name("anthropic-api-key"),
+            name=namer.secret_name("anthropic-api-key-v3"),
             description="Anthropic API key for Claude completions",
+            recovery_window_in_days=0,  # Immediate deletion (dev only)
             tags=create_tags(environment, f"{name}-anthropic-api-key"),
             opts=child_opts,
         )
@@ -71,8 +73,9 @@ class SecretsManagerComponent(pulumi.ComponentResource):
         # Database credentials secret (with random password)
         self.db_credentials = aws.secretsmanager.Secret(
             f"{name}-db-credentials",
-            name=namer.secret_name("db-credentials"),
+            name=namer.secret_name("db-credentials-v3"),
             description="RDS PostgreSQL credentials",
+            recovery_window_in_days=0,  # Immediate deletion (dev only)
             tags=create_tags(environment, f"{name}-db-credentials"),
             opts=child_opts,
         )

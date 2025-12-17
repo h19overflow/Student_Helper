@@ -24,6 +24,7 @@ class SecurityGroupOutputs:
     lambda_sg_id: pulumi.Output[str]
     database_sg_id: pulumi.Output[str]
     endpoints_sg_id: pulumi.Output[str]
+    alb_sg_id: pulumi.Output[str]
 
 
 class SecurityGroupsComponent(pulumi.ComponentResource):
@@ -85,6 +86,15 @@ class SecurityGroupsComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
+        # ALB security group
+        self.alb_sg = aws.ec2.SecurityGroup(
+            f"{name}-alb-sg",
+            description="Security group for Application Load Balancer",
+            vpc_id=vpc_id,
+            tags=create_tags(environment, f"{name}-alb-sg"),
+            opts=child_opts,
+        )
+
         self._create_rules(name, child_opts)
 
         self.register_outputs({
@@ -92,6 +102,7 @@ class SecurityGroupsComponent(pulumi.ComponentResource):
             "lambda_sg_id": self.lambda_sg.id,
             "database_sg_id": self.database_sg.id,
             "endpoints_sg_id": self.endpoints_sg.id,
+            "alb_sg_id": self.alb_sg.id,
         })
 
     def _create_rules(
@@ -100,15 +111,15 @@ class SecurityGroupsComponent(pulumi.ComponentResource):
         opts: pulumi.ResourceOptions,
     ) -> None:
         """Create security group rules."""
-        # Backend: Allow inbound on FastAPI port (from anywhere in VPC for VPC Link)
+        # Backend: Allow inbound on FastAPI port from ALB
         aws.vpc.SecurityGroupIngressRule(
             f"{name}-backend-ingress-fastapi",
             security_group_id=self.backend_sg.id,
             ip_protocol="tcp",
             from_port=PORTS["fastapi"],
             to_port=PORTS["fastapi"],
-            cidr_ipv4="10.0.0.0/16",  # VPC CIDR for API Gateway VPC Link
-            description="FastAPI from VPC Link",
+            referenced_security_group_id=self.alb_sg.id,
+            description="FastAPI from ALB",
             opts=opts,
         )
 
@@ -180,6 +191,30 @@ class SecurityGroupsComponent(pulumi.ComponentResource):
             opts=opts,
         )
 
+        # ALB: Allow inbound HTTP from VPC (for API Gateway VPC Link)
+        aws.vpc.SecurityGroupIngressRule(
+            f"{name}-alb-ingress-http",
+            security_group_id=self.alb_sg.id,
+            ip_protocol="tcp",
+            from_port=PORTS["http"],
+            to_port=PORTS["http"],
+            cidr_ipv4="10.0.0.0/16",  # VPC CIDR for VPC Link
+            description="HTTP from VPC Link",
+            opts=opts,
+        )
+
+        # ALB: Allow outbound to backend
+        aws.vpc.SecurityGroupEgressRule(
+            f"{name}-alb-egress-backend",
+            security_group_id=self.alb_sg.id,
+            ip_protocol="tcp",
+            from_port=PORTS["fastapi"],
+            to_port=PORTS["fastapi"],
+            referenced_security_group_id=self.backend_sg.id,
+            description="To backend FastAPI",
+            opts=opts,
+        )
+
     def get_outputs(self) -> SecurityGroupOutputs:
         """Get security group output values."""
         return SecurityGroupOutputs(
@@ -187,4 +222,5 @@ class SecurityGroupsComponent(pulumi.ComponentResource):
             lambda_sg_id=self.lambda_sg.id,
             database_sg_id=self.database_sg.id,
             endpoints_sg_id=self.endpoints_sg.id,
+            alb_sg_id=self.alb_sg.id,
         )

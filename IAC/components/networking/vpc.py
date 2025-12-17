@@ -23,6 +23,7 @@ class VpcOutputs:
     private_subnet_id: pulumi.Output[str]
     lambda_subnet_id: pulumi.Output[str]
     data_subnet_id: pulumi.Output[str]
+    data_subnet_id_b: pulumi.Output[str]
     private_route_table_id: pulumi.Output[str]
 
 
@@ -88,7 +89,7 @@ class VpcComponent(pulumi.ComponentResource):
             f"{name}-lambda-subnet",
             vpc_id=self.vpc.id,
             cidr_block=SUBNET_CIDRS["lambda"],
-            availability_zone=AVAILABILITY_ZONES[0],
+            availability_zone=AVAILABILITY_ZONES[1],  # Different AZ for VPC endpoints
             tags=create_tags(environment, f"{name}-lambda-subnet"),
             opts=child_opts,
         )
@@ -102,6 +103,15 @@ class VpcComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
+        self.data_subnet_b = aws.ec2.Subnet(
+            f"{name}-data-subnet-b",
+            vpc_id=self.vpc.id,
+            cidr_block=SUBNET_CIDRS["data_b"],
+            availability_zone=AVAILABILITY_ZONES[1],
+            tags=create_tags(environment, f"{name}-data-subnet-b"),
+            opts=child_opts,
+        )
+
         # Create route tables
         self._create_route_tables(name, child_opts)
 
@@ -110,6 +120,7 @@ class VpcComponent(pulumi.ComponentResource):
             "private_subnet_id": self.private_subnet.id,
             "lambda_subnet_id": self.lambda_subnet.id,
             "data_subnet_id": self.data_subnet.id,
+            "data_subnet_id_b": self.data_subnet_b.id,
             "private_route_table_id": self.private_rt.id,
         })
 
@@ -155,6 +166,7 @@ class VpcComponent(pulumi.ComponentResource):
             ("private", self.private_subnet),
             ("lambda", self.lambda_subnet),
             ("data", self.data_subnet),
+            ("data-b", self.data_subnet_b),
         ]:
             aws.ec2.RouteTableAssociation(
                 f"{name}-{subnet_name}-rt-assoc",
@@ -170,5 +182,6 @@ class VpcComponent(pulumi.ComponentResource):
             private_subnet_id=self.private_subnet.id,
             lambda_subnet_id=self.lambda_subnet.id,
             data_subnet_id=self.data_subnet.id,
+            data_subnet_id_b=self.data_subnet_b.id,
             private_route_table_id=self.private_rt.id,
         )

@@ -51,7 +51,7 @@ sudo docker run -d \
     -e POSTGRES_HOST="student-helper-dev-postgres.cn42mcooy4v2.ap-southeast-2.rds.amazonaws.com" \
     -e POSTGRES_PORT="5432" \
     -e POSTGRES_USER="postgres" \
-    -e POSTGRES_PASSWORD="PLACEHOLDER_SET_VIA_CLI" \
+    -e POSTGRES_PASSWORD="h!2wpbbfRqQy1Lg_|x?YT.M!LGm1" \
     -e POSTGRES_DB="studenthelper" \
     -e AWS_REGION="ap-southeast-2" \
     -e DOCUMENTS_BUCKET="student-helper-dev-documents" \

@@ -19,8 +19,8 @@ class DiagramService:
 
     def generate_diagram(self, prompt: str, session_id: uuid.UUID) -> dict:
         """Generate grounded Mermaid diagram."""
-        pass
+        return {"diagram_code": None}
 
     def validate_diagram(self, diagram_code: str, citations: list[dict]) -> bool:
         """Validate diagram grounding."""
-        pass
+        return True

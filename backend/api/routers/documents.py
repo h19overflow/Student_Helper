@@ -1,151 +1,179 @@
 """
 Document API endpoints.
 
-Routes: POST /sessions/{id}/docs, GET /sessions/{id}/docs
+Routes: POST /sessions/{id}/docs/presigned-url, POST /sessions/{id}/docs/uploaded, GET /sessions/{id}/docs
 
 Dependencies: backend.application.document_service, backend.models
 System role: Document HTTP API
 """
 
 import logging
-import shutil
-import tempfile
-from pathlib import Path
 from uuid import UUID
 import uuid as uuid_lib
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 
 logger = logging.getLogger(__name__)
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from backend.api.deps import get_document_service, get_job_service
-from backend.api.routers.router_utils.document_utils import process_document_background
+from backend.api.deps import get_document_service, get_job_service, get_s3_document_client
+from backend.api.routers.router_utils.document_utils import process_document_from_s3_background
+from backend.api.routers.router_utils.presigned_url_utils import (
+    FilenameValidationError,
+    generate_safe_s3_key,
+    validate_filename,
+)
 from backend.application.services.document_service import DocumentService
 from backend.application.services.job_service import JobService
-from backend.boundary.db.connection import get_async_db
+from backend.boundary.aws.s3_client import S3DocumentClient
 from backend.boundary.db.models.job_model import JobType, JobStatus
-from backend.models.document import DocumentListResponse
+from backend.models.document import (
+    DocumentListResponse,
+    DocumentUploadedNotification,
+    PresignedUrlRequest,
+    PresignedUrlResponse,
+)
 
 router = APIRouter(prefix="/sessions", tags=["documents"])
 
-# Allowed file extensions
-ALLOWED_EXTENSIONS = {".pdf"}
-MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
 
-
-@router.post("/{session_id}/docs")
-async def upload_documents(
+@router.post("/{session_id}/docs/presigned-url", response_model=PresignedUrlResponse)
+async def create_presigned_upload_url(
     session_id: UUID,
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    job_service: JobService = Depends(get_job_service),
-    db: AsyncSession = Depends(get_async_db),
-) -> dict:
+    request: PresignedUrlRequest,
+    s3_client: S3DocumentClient = Depends(get_s3_document_client),
+) -> PresignedUrlResponse:
     """
-    Upload document to session via multipart form (non-blocking).
+    Generate presigned URL for direct S3 upload.
 
-    Saves file to temp location, creates job for background processing,
-    and returns job_id for polling. Temp file is cleaned up after processing.
+    Frontend uses this URL to upload file directly to S3, bypassing the backend.
+    After successful upload, frontend must call POST /docs/uploaded with the s3_key.
 
     Args:
         session_id: Session UUID
-        file: Uploaded file (multipart form)
-        background_tasks: FastAPI background tasks
-        job_service: Injected JobService
-        db: Database session for explicit commit
+        request: Filename and content type
+        s3_client: Injected S3 client
 
     Returns:
-        dict: Job ID and initial status for frontend polling
+        PresignedUrlResponse: Presigned URL, s3_key, and expiry
 
     Raises:
-        HTTPException(400): Invalid file type or size
-        HTTPException(500): File save failed
+        HTTPException(400): Invalid filename or extension
     """
     logger.info(
-        "Document upload request received",
-        extra={"session_id": str(session_id), "document_name": file.filename},
+        "Presigned URL request received",
+        extra={"session_id": str(session_id), "filename": request.filename},
     )
 
-    # Validate file extension
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="Filename is required")
-
-    file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in ALLOWED_EXTENSIONS:
-        logger.warning(
-            "Upload rejected: invalid file type",
-            extra={"session_id": str(session_id), "document_name": file.filename, "extension": file_ext},
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"File type '{file_ext}' not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
-        )
-
-    # Save file to temp location
     try:
-        # Create temp file with original extension
-        temp_dir = tempfile.mkdtemp(prefix="studybuddy_")
-        temp_path = Path(temp_dir) / file.filename
+        # Validate filename
+        validate_filename(request.filename)
 
-        # Read and save file content
-        content = await file.read()
+        # Generate unique S3 key
+        s3_key = generate_safe_s3_key(str(session_id), request.filename)
 
-        # Validate file size
-        if len(content) > MAX_FILE_SIZE:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise HTTPException(
-                status_code=400,
-                detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024 * 1024)}MB",
-            )
-
-        with open(temp_path, "wb") as f:
-            f.write(content)
+        # Generate presigned URL
+        presigned_url, expires_at = s3_client.generate_presigned_url(
+            s3_key=s3_key,
+            content_type=request.content_type,
+        )
 
         logger.info(
-            "File saved to temp location",
-            extra={"session_id": str(session_id), "temp_path": str(temp_path), "size": len(content)},
+            "Presigned URL generated",
+            extra={"session_id": str(session_id), "s3_key": s3_key},
         )
 
-    except HTTPException:
-        raise
+        return PresignedUrlResponse(
+            presigned_url=presigned_url,
+            s3_key=s3_key,
+            expires_at=expires_at.isoformat(),
+            content_type=request.content_type,
+        )
+
+    except FilenameValidationError as e:
+        logger.warning(
+            "Filename validation failed",
+            extra={"session_id": str(session_id), "filename": request.filename, "error": str(e)},
+        )
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(
-            "Failed to save uploaded file",
+            "Failed to generate presigned URL",
             extra={"session_id": str(session_id), "error": str(e)},
         )
-        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+        raise HTTPException(status_code=500, detail="Failed to generate upload URL")
 
-    # Create job for tracking
-    task_id = str(uuid_lib.uuid4())
-    job_id = await job_service.create_job(
-        job_type=JobType.DOCUMENT_INGESTION,
-        task_id=task_id,
-    )
 
-    # Commit job creation immediately so polling can find it
-    await job_service.db.commit()
+@router.post("/{session_id}/docs/uploaded")
+async def document_uploaded_to_s3(
+    session_id: UUID,
+    notification: DocumentUploadedNotification,
+    background_tasks: BackgroundTasks,
+    job_service: JobService = Depends(get_job_service),
+) -> dict:
+    """
+    Handle notification that document was uploaded to S3.
 
+    Called by frontend after successful upload to S3 using presigned URL.
+    Creates a job and queues background processing.
+
+    Args:
+        session_id: Session UUID
+        notification: S3 key and filename from frontend
+        background_tasks: FastAPI background tasks
+        job_service: Injected JobService
+
+    Returns:
+        dict: Job ID and status for polling
+
+    Raises:
+        HTTPException(500): Failed to create job
+    """
     logger.info(
-        "Job created and committed",
-        extra={"job_id": str(job_id), "task_id": task_id},
+        "Document upload notification received",
+        extra={
+            "session_id": str(session_id),
+            "s3_key": notification.s3_key,
+            "filename": notification.filename,
+        },
     )
 
-    # Add background task for processing (includes cleanup)
-    background_tasks.add_task(
-        process_document_background,
-        job_id=job_id,
-        file_path=str(temp_path),
-        session_id=session_id,
-        document_name=file.filename,
-    )
+    try:
+        # Create job for tracking
+        task_id = str(uuid_lib.uuid4())
+        job_id = await job_service.create_job(
+            job_type=JobType.DOCUMENT_INGESTION,
+            task_id=task_id,
+        )
 
-    return {
-        "jobId": str(job_id),
-        "status": JobStatus.PENDING.value,
-        "message": "Document upload started. Poll /jobs/{jobId} for status.",
-    }
+        # Commit job creation immediately so polling can find it
+        await job_service.db.commit()
+
+        logger.info(
+            "Job created for S3 document processing",
+            extra={"job_id": str(job_id), "task_id": task_id, "s3_key": notification.s3_key},
+        )
+
+        # Add background task for processing
+        background_tasks.add_task(
+            process_document_from_s3_background,
+            job_id=job_id,
+            s3_key=notification.s3_key,
+            session_id=session_id,
+            document_name=notification.filename,
+        )
+
+        return {
+            "jobId": str(job_id),
+            "status": JobStatus.PENDING.value,
+            "message": "Document processing started. Poll /jobs/{jobId} for status.",
+        }
+
+    except Exception as e:
+        logger.exception(
+            "Failed to process upload notification",
+            extra={"session_id": str(session_id), "error": str(e)},
+        )
+        raise HTTPException(status_code=500, detail="Failed to process upload notification")
 
 
 @router.get("/{session_id}/docs", response_model=DocumentListResponse)

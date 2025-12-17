@@ -983,16 +983,33 @@ aws lambda update-function-code \
 
 3. **Deploy Frontend:**
 ```powershell
-# Build React app
-cd frontend && npm run build
+# Use the deployment script
+cd study-buddy-ai
+.\deploy.ps1
 
-# Upload to S3
-aws s3 sync build/ s3://student-helper-dev-frontend/
+# Or with cache invalidation
+.\deploy.ps1 -InvalidateCache -DistributionId "YOUR_DISTRIBUTION_ID"
+```
 
-# Invalidate CloudFront cache
-aws cloudfront create-invalidation \
-    --distribution-id <distribution-id> \
-    --paths "/*"
+4. **Deploy Backend to ECR:**
+```powershell
+# Use the deployment script
+cd backend
+.\deploy-ecr.ps1
+
+# This will:
+# - Create ECR repo if needed
+# - Build Docker image
+# - Push to ECR
+```
+
+5. **Deploy Backend to EC2:**
+```powershell
+# Connect via SSM
+aws ssm start-session --target i-045c7f914f0447290 --region ap-southeast-2
+
+# Run the setup script on EC2
+bash ec2-setup.sh
 ```
 
 ### Destroy Environment

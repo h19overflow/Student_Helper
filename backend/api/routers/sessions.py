@@ -51,7 +51,9 @@ async def create_session(
         HTTPException(500): Creation failed
     """
     try:
-        session_id = await session_service.create_session(metadata=request.metadata)
+        # Ensure metadata dict is not None
+        metadata = request.metadata or {}
+        session_id = await session_service.create_session(metadata=metadata)
         session_data = await session_service.get_session(session_id)
         return SessionResponse(**session_data)
     except ValueError as e:

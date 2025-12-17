@@ -19,7 +19,12 @@ from backend.api.deps import (
     get_diagram_service,
     get_session_service,
 )
-from backend.models.chat import ChatRequest, ChatResponse
+from backend.models.chat import (
+    ChatHistoryResponse,
+    ChatMessageResponse,
+    ChatRequest,
+    ChatResponse,
+)
 from backend.models.citation import Citation
 from backend.models.session import CreateSessionRequest, SessionResponse
 
@@ -115,6 +120,56 @@ async def delete_session(
         raise HTTPException(
             status_code=500,
             detail=f"Session deletion failed: {str(e)}"
+        )
+
+
+@router.get("/{session_id}/chat/history", response_model=ChatHistoryResponse)
+async def get_chat_history(
+    session_id: UUID,
+    limit: int = 100,
+    chat_service: ChatService = Depends(get_chat_service),
+) -> ChatHistoryResponse:
+    """
+    Get chat history for a session.
+
+    Args:
+        session_id: Session UUID
+        limit: Maximum number of messages to return (default 100)
+        chat_service: Injected ChatService
+
+    Returns:
+        ChatHistoryResponse: List of messages with total count
+
+    Raises:
+        HTTPException(404): Session not found
+        HTTPException(500): Retrieval failed
+    """
+    from backend.application.adapters.chat_history_adapter import ChatHistoryAdapter
+
+    try:
+        chat_adapter = ChatHistoryAdapter(session_id=session_id, db=chat_service.db)
+        messages = await chat_adapter.get_messages_as_dicts(limit=limit)
+
+        # Map role names: "human" -> "user", "ai" -> "assistant"
+        chat_messages = [
+            ChatMessageResponse(
+                role="user" if msg["role"] == "human" else "assistant",
+                content=msg["content"],
+            )
+            for msg in messages
+        ]
+
+        return ChatHistoryResponse(
+            messages=chat_messages,
+            total=len(chat_messages),
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve chat history: {str(e)}",
         )
 
 

@@ -27,5 +27,19 @@ class ChatResponse(BaseModel):
     mermaid_diagram: str | None = None
 
 
+class ChatMessageResponse(BaseModel):
+    """Single chat message in history."""
+
+    role: str = Field(description="Message role: 'user' or 'assistant'")
+    content: str = Field(description="Message content")
+
+
+class ChatHistoryResponse(BaseModel):
+    """Response schema for chat history."""
+
+    messages: list[ChatMessageResponse]
+    total: int = Field(description="Total number of messages")
+
+
 # Ensure forward references are resolved
 ChatResponse.model_rebuild()

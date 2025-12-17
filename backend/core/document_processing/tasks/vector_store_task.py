@@ -95,6 +95,38 @@ class VectorStoreTask:
         hash_input = f"{content}:{source}:{start_index}"
         return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
+    def _sanitize_metadata(
+        self,
+        metadata: dict,
+        document_id: str,
+        session_id: str,
+        chunk_id: str,
+        chunk_index: int,
+    ) -> dict:
+        """
+        Sanitize metadata to fit S3 Vectors 2048 byte limit.
+
+        Keeps only essential filterable fields, discarding PDF-extracted
+        metadata (author, title, producer, etc.) that can cause size overflow.
+
+        Args:
+            metadata: Original document metadata from PyPDFLoader
+            document_id: Document UUID
+            session_id: Session UUID
+            chunk_id: Generated chunk ID
+            chunk_index: Position in document
+
+        Returns:
+            dict: Sanitized metadata under 2048 bytes
+        """
+        return {
+            "chunk_id": chunk_id,
+            "chunk_index": chunk_index,
+            "session_id": session_id,
+            "doc_id": document_id,
+            "page": metadata.get("page", 0),
+        }
+
     def upload(
         self,
         documents: list[Document],
@@ -127,13 +159,14 @@ class VectorStoreTask:
             chunk_id = self._generate_chunk_id(doc.page_content, doc.metadata)
             chunk_ids.append(chunk_id)
 
-            doc.metadata.update({
-                "chunk_id": chunk_id,
-                "chunk_index": i,
-                "session_id": session_id,
-                "doc_id": document_id,
-                "source_uri": doc.metadata.get("source", ""),
-            })
+            # Replace metadata with sanitized version to avoid S3 Vectors 2048 byte limit
+            doc.metadata = self._sanitize_metadata(
+                metadata=doc.metadata,
+                document_id=document_id,
+                session_id=session_id,
+                chunk_id=chunk_id,
+                chunk_index=i,
+            )
 
         try:
             vector_store = self._get_vector_store()

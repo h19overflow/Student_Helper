@@ -63,43 +63,54 @@ class DocumentService:
 
     async def upload_document(
         self,
-        file_path: str,
         session_id: UUID,
         document_name: str,
+        file_path: str | None = None,
+        s3_key: str | None = None,
     ) -> PipelineResult:
         """
         Upload and process document through pipeline.
 
+        Accepts either a local file_path OR an s3_key. If s3_key is provided,
+        the pipeline downloads from S3 first, then processes.
+
         Steps:
         1. Validate session exists
         2. Create document record in DB with PENDING status
-        3. Process via pipeline (parse → chunk → embed+upload to S3 Vectors)
+        3. Process via pipeline (S3 download → parse → chunk → embed+upload to S3 Vectors)
         4. Update document status to COMPLETED
         5. Return processing result
 
         Args:
-            file_path: Path to document file
             session_id: Session UUID
             document_name: Document filename/name
+            file_path: Path to local document file (mutually exclusive with s3_key)
+            s3_key: S3 object key (mutually exclusive with file_path)
 
         Returns:
             PipelineResult: Processing result with chunk count and timing
 
         Raises:
-            ValueError: If session doesn't exist
+            ValueError: If session doesn't exist or neither file_path nor s3_key provided
             ParsingError: If document parsing fails
         """
+        if not file_path and not s3_key:
+            raise ValueError("Either file_path or s3_key must be provided")
+
         # Validate session exists
         session = await session_crud.get_by_id(self.db, session_id)
         if not session:
             raise ValueError(f"Session {session_id} does not exist")
+
+        # Use s3_key as upload_url if provided, otherwise use file_path
+        upload_url = s3_key if s3_key else file_path
 
         # Create document record
         document = await document_crud.create(
             self.db,
             name=document_name,
             session_id=session_id,
-            upload_url=file_path,
+            upload_url=upload_url,
             status=DocumentStatus.PENDING,
         )
 
@@ -107,6 +118,7 @@ class DocumentService:
             # Process document through pipeline
             result = self.pipeline.process(
                 file_path=file_path,
+                s3_key=s3_key,
                 document_id=str(document.id),
                 session_id=str(session_id),
             )

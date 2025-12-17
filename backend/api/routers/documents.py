@@ -61,7 +61,7 @@ async def create_presigned_upload_url(
     """
     logger.info(
         "Presigned URL request received",
-        extra={"session_id": str(session_id), "filename": request.filename},
+        extra={"session_id": str(session_id), "file_name": request.filename},
     )
 
     try:
@@ -92,7 +92,7 @@ async def create_presigned_upload_url(
     except FilenameValidationError as e:
         logger.warning(
             "Filename validation failed",
-            extra={"session_id": str(session_id), "filename": request.filename, "error": str(e)},
+            extra={"session_id": str(session_id), "file_name": request.filename, "error": str(e)},
         )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -133,7 +133,7 @@ async def document_uploaded_to_s3(
         extra={
             "session_id": str(session_id),
             "s3_key": notification.s3_key,
-            "filename": notification.filename,
+            "file_name": notification.filename,
         },
     )
 

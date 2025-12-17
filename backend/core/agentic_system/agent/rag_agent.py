@@ -190,12 +190,11 @@ class RAGAgent:
             StreamEvent: Context, token, citations, and complete events
         """
         # 1. Retrieve context directly from vector store
-        # Note: session_id filter disabled for now to allow cross-session search
-        # TODO: Re-enable when document indexing properly associates session_ids
+        # Session filtering ensures isolation between sessions
         search_results = self._vector_store.similarity_search(
             query=question,
             k=5,
-            # session_id=session_id,  # Disabled: causes empty results if session has no docs
+            session_id=session_id,
         )
 
         # 2. Extract citations from search results
@@ -228,18 +227,17 @@ class RAGAgent:
             },
         )
 
-        # 4. Format context for prompt
+        # 4. Format context for prompt (hide internal IDs from LLM)
         if not search_results:
             context_text = "No relevant documents found."
         else:
             formatted_chunks = []
             for result in search_results:
+                # Format with page/section for LLM citation, omit internal chunk_id
+                page_info = f"Page {result.metadata.page}" if result.metadata.page else "Page unknown"
+                section_info = f", Section: {result.metadata.section}" if result.metadata.section else ""
                 chunk_text = f"""---
-chunk_id: {result.chunk_id}
-page: {result.metadata.page}
-section: {result.metadata.section}
-source_uri: {result.metadata.source_uri}
-relevance_score: {result.similarity_score:.3f}
+[{page_info}{section_info}]
 
 {result.content}
 ---"""
@@ -309,7 +307,7 @@ relevance_score: {result.similarity_score:.3f}
         )
         yield StreamEvent(
             event=StreamEventType.COMPLETE,
-            data={"fullAnswer": full_answer},
+            data={"full_answer": full_answer},
         )
 
 

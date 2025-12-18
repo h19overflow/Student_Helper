@@ -134,8 +134,11 @@ class IamRolesComponent(pulumi.ComponentResource):
                             "bedrock:InvokeModelWithResponseStream",
                         ],
                         "Resource": [
-                            "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-*",
+                            # Regional Claude models
                             "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+                            # Cross-region inference models (global prefix)
+                            "arn:aws:bedrock:*::foundation-model/global.anthropic.claude-*",
+                            # Titan embedding model
                             "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0",
                         ],
                     },

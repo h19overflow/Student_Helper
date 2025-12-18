@@ -41,6 +41,9 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     configure_logging()
+    logger.info("=" * 80)
+    logger.info("🚀 APPLICATION STARTUP BEGIN")
+    logger.info("=" * 80)
     logger.info("Application startup: logging configured")
 
     # Initialize expensive resources once at startup
@@ -71,7 +74,9 @@ async def lifespan(app: FastAPI):
         app.state.vector_store = vector_store
         app.state.rag_agent = rag_agent
 
-        logger.info("Application startup complete: all resources initialized")
+        logger.info("=" * 80)
+        logger.info("✅ APPLICATION STARTUP COMPLETE - READY TO ACCEPT CONNECTIONS")
+        logger.info("=" * 80)
     except Exception as e:
         logger.exception(
             "Failed to initialize application resources",

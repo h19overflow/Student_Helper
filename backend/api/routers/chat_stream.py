@@ -3,7 +3,7 @@ WebSocket streaming chat endpoint.
 
 Provides real-time token streaming for chat responses using WebSocket.
 
-Routes: WS /ws/sessions/{session_id}/chat
+Routes: WS /ws/chat?sessionId={session_id}
 
 Dependencies: backend.application.services.chat_service
 System role: WebSocket streaming HTTP API
@@ -24,13 +24,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["streaming"])
 
 
-@router.websocket("/ws/sessions/{session_id}/chat")
+@router.websocket("/ws/chat")
 async def websocket_chat(
     websocket: WebSocket,
-    session_id: UUID,
 ) -> None:
     """
     WebSocket endpoint for streaming chat responses.
+
+    Client connects with query parameter:
+        wss://api.../ws/chat?sessionId={session_id}
 
     Client sends:
         {"event": "chat", "data": {"message": "...", "include_diagram": false}}
@@ -45,19 +47,40 @@ async def websocket_chat(
         {"event": "error", "data": {"code": "...", "message": "..."}}
 
     Args:
-        websocket: WebSocket connection
-        session_id: Session UUID from path
+        websocket: WebSocket connection (session_id extracted from query params)
     """
+    # Extract session_id from query parameters
+    session_id_str = websocket.query_params.get("sessionId")
+
     logger.info(
         "WebSocket connection attempt received",
         extra={
-            "session_id": str(session_id),
+            "session_id": session_id_str,
             "client_host": websocket.client,
             "headers": dict(websocket.headers),
             "path": websocket.url.path,
             "query_params": str(websocket.query_params),
         },
     )
+
+    # Validate session_id query parameter
+    if not session_id_str:
+        logger.warning(
+            "WebSocket connection rejected: missing sessionId query parameter",
+            extra={"query_params": str(websocket.query_params)},
+        )
+        await websocket.close(code=1008, reason="Missing sessionId query parameter")
+        return
+
+    try:
+        session_id = UUID(session_id_str)
+    except ValueError as e:
+        logger.warning(
+            "WebSocket connection rejected: invalid sessionId format",
+            extra={"session_id_str": session_id_str, "error": str(e)},
+        )
+        await websocket.close(code=1008, reason="Invalid sessionId format")
+        return
 
     try:
         await websocket.accept()

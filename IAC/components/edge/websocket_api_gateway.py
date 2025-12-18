@@ -66,14 +66,17 @@ class WebSocketApiGatewayComponent(pulumi.ComponentResource):
         )
 
         # Integration with NLB via VPC Link V1
-        # For WebSocket API with VPC Link, integration_uri is the load balancer HTTP URL
+        # WebSocket APIs connect at the stage root, then integration_uri specifies backend path
+        # Frontend connects to: wss://api.../production?sessionId={id}
+        # This routes to backend: http://nlb:8000/ws/chat?sessionId={id}
         self.integration = aws.apigatewayv2.Integration(
             f"{name}-ws-integration",
             api_id=self.api.id,
             integration_type="HTTP_PROXY",
             integration_method="ANY",
             # VPC Link V1 requires HTTP URL to NLB (not ARN like VPC Link V2)
-            integration_uri=nlb_dns_name.apply(lambda dns: f"http://{dns}:8000"),
+            # IMPORTANT: Include backend path here, not in client connection URL
+            integration_uri=nlb_dns_name.apply(lambda dns: f"http://{dns}:8000/ws/chat"),
             connection_type="VPC_LINK",
             connection_id=self.vpc_link.id,
             timeout_milliseconds=29000,  # Max for WebSocket

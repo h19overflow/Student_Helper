@@ -75,10 +75,13 @@ class NlbComponent(pulumi.ComponentResource):
             health_check=aws.lb.TargetGroupHealthCheckArgs(
                 enabled=True,
                 port="traffic-port",
-                protocol="TCP",  # TCP health check (SYN/ACK)
+                protocol="HTTP",  # Use HTTP health check instead of TCP
+                path="/api/v1/health",  # Same as ALB health check
                 healthy_threshold=2,
                 unhealthy_threshold=2,
                 interval=30,
+                timeout=10,
+                matcher="200",
             ),
             tags=create_tags(environment, f"{name}-nlb-tg"),
             opts=child_opts,

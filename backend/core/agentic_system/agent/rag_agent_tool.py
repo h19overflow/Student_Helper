@@ -10,6 +10,7 @@ System role: Search tool for RAG agent context retrieval
 
 from typing import TYPE_CHECKING
 
+from fastapi.concurrency import run_in_threadpool
 from langchain_core.tools import tool
 
 if TYPE_CHECKING:
@@ -24,11 +25,11 @@ def create_search_tool(vector_store: "S3VectorsStore"):
         vector_store: S3VectorsStore instance for similarity search
 
     Returns:
-        Callable: Tool function for similarity search
+        Callable: Async tool function for similarity search
     """
 
     @tool
-    def search_documents(query: str, k: int = 5) -> str:
+    async def search_documents(query: str, k: int = 5) -> str:
         """Search for relevant document chunks.
 
         Use this tool to find relevant context for answering questions.
@@ -41,7 +42,12 @@ def create_search_tool(vector_store: "S3VectorsStore"):
         Returns:
             str: Formatted context with chunk metadata
         """
-        results = vector_store.similarity_search(query=query, k=k)
+        # Run synchronous vector store search in threadpool to prevent event loop blocking
+        results = await run_in_threadpool(
+            vector_store.similarity_search,
+            query=query,
+            k=k,
+        )
 
         if not results:
             return "No relevant documents found."

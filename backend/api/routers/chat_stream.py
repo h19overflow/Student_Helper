@@ -49,17 +49,53 @@ async def websocket_chat(
         session_id: Session UUID from path
     """
     logger.info(
-        "WebSocket connection established",
-        extra={"session_id": str(session_id), "client_host": websocket.client},
+        "WebSocket connection attempt received",
+        extra={
+            "session_id": str(session_id),
+            "client_host": websocket.client,
+            "headers": dict(websocket.headers),
+            "path": websocket.url.path,
+            "query_params": str(websocket.query_params),
+        },
     )
 
-    await websocket.accept()
+    try:
+        await websocket.accept()
+        logger.info(
+            "WebSocket connection accepted successfully",
+            extra={"session_id": str(session_id)},
+        )
+    except Exception as e:
+        logger.exception(
+            "Failed to accept WebSocket connection",
+            extra={
+                "session_id": str(session_id),
+                "error_type": type(e).__name__,
+                "error_msg": str(e),
+            },
+        )
+        raise
 
     # Send connected event
-    await websocket.send_json({
-        "event": StreamEventType.CONNECTED.value,
-        "data": {"session_id": str(session_id)},
-    })
+    try:
+        await websocket.send_json({
+            "event": StreamEventType.CONNECTED.value,
+            "data": {"session_id": str(session_id)},
+        })
+        logger.debug(
+            "Sent CONNECTED event to client",
+            extra={"session_id": str(session_id)},
+        )
+    except Exception as e:
+        logger.exception(
+            "Failed to send CONNECTED event",
+            extra={
+                "session_id": str(session_id),
+                "error_type": type(e).__name__,
+                "error_msg": str(e),
+            },
+        )
+        raise
 
     # Import inside function to avoid circular imports and startup loading
     from backend.application.services import ChatService

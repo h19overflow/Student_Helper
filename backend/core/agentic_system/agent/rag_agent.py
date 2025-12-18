@@ -12,6 +12,7 @@ System role: RAG Q&A agent orchestration
 
 from collections.abc import AsyncGenerator
 
+from fastapi.concurrency import run_in_threadpool
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 from langchain_aws import ChatBedrockConverse
@@ -191,7 +192,9 @@ class RAGAgent:
         """
         # 1. Retrieve context directly from vector store
         # Session filtering ensures isolation between sessions
-        search_results = self._vector_store.similarity_search(
+        # Run in threadpool to prevent blocking event loop (boto3 is synchronous)
+        search_results = await run_in_threadpool(
+            self._vector_store.similarity_search,
             query=question,
             k=5,
             session_id=session_id,

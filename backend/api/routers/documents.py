@@ -103,7 +103,7 @@ async def create_presigned_upload_url(
         raise HTTPException(status_code=500, detail="Failed to generate upload URL")
 
 
-@router.post("/{session_id}/docs/uploaded")
+@router.post("/{session_id}/docs/uploaded", )
 async def document_uploaded_to_s3(
     session_id: UUID,
     notification: DocumentUploadedNotification,

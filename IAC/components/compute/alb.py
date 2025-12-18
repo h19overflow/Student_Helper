@@ -55,6 +55,8 @@ class AlbComponent(pulumi.ComponentResource):
             security_groups=[security_group_id],
             subnets=subnet_ids,
             enable_deletion_protection=False,  # Dev only
+            # Increase idle timeout for WebSocket connections (default 60s)
+            idle_timeout=600,  # 10 minutes - matches API Gateway idle timeout
             tags=create_tags(environment, f"{name}-alb"),
             opts=child_opts,
         )
@@ -67,6 +69,14 @@ class AlbComponent(pulumi.ComponentResource):
             protocol="HTTP",
             vpc_id=vpc_id,
             target_type="instance",
+            # Enable sticky sessions for WebSocket connections
+            stickiness=aws.lb.TargetGroupStickinessArgs(
+                enabled=True,
+                type="lb_cookie",
+                cookie_duration=86400,  # 24 hours
+            ),
+            # Increase deregistration delay for graceful WebSocket shutdown
+            deregistration_delay=300,  # 5 minutes (default is 300)
             health_check=aws.lb.TargetGroupHealthCheckArgs(
                 enabled=True,
                 path="/api/v1/health",

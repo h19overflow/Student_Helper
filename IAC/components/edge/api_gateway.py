@@ -69,6 +69,7 @@ class ApiGatewayComponent(pulumi.ComponentResource):
         )
 
         # Integration with ALB via VPC Link
+        # HTTP_PROXY supports WebSocket upgrade requests
         self.integration = aws.apigatewayv2.Integration(
             f"{name}-integration",
             api_id=self.api.id,
@@ -77,6 +78,11 @@ class ApiGatewayComponent(pulumi.ComponentResource):
             integration_uri=alb_listener_arn,
             connection_type="VPC_LINK",
             connection_id=self.vpc_link.id,
+            # Integration timeout for initial HTTP requests and WebSocket handshake
+            # Once WebSocket is established, connection can stay open up to 10 min idle
+            timeout_milliseconds=30000,  # 30 seconds (max for HTTP API)
+            # Preserve headers for WebSocket upgrade (Connection: Upgrade, Upgrade: websocket)
+            payload_format_version="1.0",
             opts=child_opts,
         )
 

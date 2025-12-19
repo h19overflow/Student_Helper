@@ -19,10 +19,16 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Install runtime dependencies only
+# Install runtime dependencies (including aws-cli and jq for Secrets Manager)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
+    jq \
+    unzip \
+    && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+    && unzip -q awscliv2.zip \
+    && ./aws/install \
+    && rm -rf awscliv2.zip aws \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --shell /bin/bash appuser
 
@@ -31,6 +37,10 @@ COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application code
 COPY . /app/backend
+
+# Copy and set permissions for entrypoint script
+COPY scripts/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Set environment
 ENV PATH=/home/appuser/.local/bin:$PATH
@@ -48,5 +58,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE 8000
 
-# Run uvicorn
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run entrypoint (creates tables, then starts uvicorn)
+ENTRYPOINT ["/app/entrypoint.sh"]

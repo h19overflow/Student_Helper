@@ -12,9 +12,6 @@ from uuid import UUID
 import uuid as uuid_lib
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-
-logger = logging.getLogger(__name__)
-
 from backend.api.deps import get_document_service, get_job_service, get_s3_document_client
 from backend.api.routers.router_utils.document_utils import process_document_from_s3_background
 from backend.api.routers.router_utils.presigned_url_utils import (
@@ -32,6 +29,7 @@ from backend.models.document import (
     PresignedUrlRequest,
     PresignedUrlResponse,
 )
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sessions", tags=["documents"])
 

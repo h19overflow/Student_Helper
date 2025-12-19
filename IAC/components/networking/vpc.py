@@ -42,6 +42,7 @@ class VpcOutputs:
     data_subnet_id: pulumi.Output[str]
     data_subnet_id_b: pulumi.Output[str]
     private_route_table_id: pulumi.Output[str]
+    nat_gateway_id: pulumi.Output[str]
 
 class VpcComponent(pulumi.ComponentResource):
     """
@@ -149,6 +150,7 @@ class VpcComponent(pulumi.ComponentResource):
             "data_subnet_id": self.data_subnet.id,
             "data_subnet_id_b": self.data_subnet_b.id,
             "private_route_table_id": self.private_rt.id,
+            "nat_gateway_id": self.nat_gateway.id,
         })
 
     def _create_route_tables(
@@ -185,12 +187,33 @@ class VpcComponent(pulumi.ComponentResource):
             opts=opts,
         )
 
-        # Private route table (VPC-only routing)
-        # All external access (Bedrock, etc.) goes through VPC Endpoints
+        # NAT Gateway for cross-region API calls (us-east-1 Bedrock embeddings)
+        # ap-southeast-2 has zero quota for Titan Embeddings V2
+        self.nat_eip = aws.ec2.Eip(
+            f"{name}-nat-eip",
+            domain="vpc",
+            tags=create_tags(self.environment, f"{name}-nat-eip"),
+            opts=opts,
+        )
+
+        self.nat_gateway = aws.ec2.NatGateway(
+            f"{name}-nat-gateway",
+            allocation_id=self.nat_eip.id,
+            subnet_id=self.public_subnet.id,
+            tags=create_tags(self.environment, f"{name}-nat-gateway"),
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[self.igw]),
+        )
+
+        # Private route table with NAT Gateway route for cross-region access
         self.private_rt = aws.ec2.RouteTable(
             f"{name}-private-rt",
             vpc_id=self.vpc.id,
-            routes=[],  # No default internet route - VPC Endpoints only
+            routes=[
+                aws.ec2.RouteTableRouteArgs(
+                    cidr_block="0.0.0.0/0",
+                    nat_gateway_id=self.nat_gateway.id,
+                ),
+            ],
             tags=create_tags(self.environment, f"{name}-private-rt"),
             opts=opts,
         )
@@ -220,4 +243,5 @@ class VpcComponent(pulumi.ComponentResource):
             data_subnet_id=self.data_subnet.id,
             data_subnet_id_b=self.data_subnet_b.id,
             private_route_table_id=self.private_rt.id,
+            nat_gateway_id=self.nat_gateway.id,
         )

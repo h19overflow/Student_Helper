@@ -84,12 +84,13 @@ def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     from backend.core.agentic_system.agent.rag_agent import RAGAgent
 
     # Create vector store
-    # Both S3 Vectors and embeddings in ap-southeast-2 (same VPC region)
+    # S3 Vectors in ap-southeast-2, embeddings in us-east-1 (via NAT Gateway)
+    # ap-southeast-2 has zero quota for Titan Embeddings V2
     vector_store = S3VectorsStore(
         vectors_bucket="student-helper-dev-vectors",
         index_name="documents",
         region="ap-southeast-2",
-        embedding_region="ap-southeast-2",
+        embedding_region="us-east-1",
     )
 
     # Create RAG agent

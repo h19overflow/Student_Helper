@@ -1,10 +1,17 @@
 """
-RDS PostgreSQL component for relational database.
+RDS PostgreSQL Component for Relational Database.
 
-Creates:
-- DB subnet group for private data subnet
-- RDS PostgreSQL instance with encryption
-- Parameter group for performance tuning
+Access Control - Who Can Connect:
+1. EC2 Backend (backend_sg) → Port 5432 ✅
+2. Lambda Processor (lambda_sg) → Port 5432 ✅
+3. Anyone else → DENIED ❌
+
+How the Connection Works:
+1. Routing: EC2/Lambda in private subnets use the implicit LOCAL route (10.0.0.0/16) to reach RDS in the data subnet. Traffic never leaves the VPC.
+2. Security Group: database_sg only allows ingress on port 5432 from backend_sg and lambda_sg (identity-based, not IP-based).
+3. Credentials: manage_master_user_password=True means AWS auto-generates the password and stores it in Secrets Manager. EC2/Lambda retrieve it at runtime via VPC Endpoints.
+
+Result: Zero public exposure. No internet path. Only trusted identities (SGs) can connect.
 """
 
 from dataclasses import dataclass

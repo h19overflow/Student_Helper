@@ -1,10 +1,28 @@
 """
-VPC endpoints component for private AWS service access.
+VPC Endpoints Component for Private AWS Service Access.
 
-Creates:
-- S3 Gateway endpoint (free, no NAT needed for S3)
-- SQS Interface endpoint (PrivateLink)
-- Secrets Manager Interface endpoint (PrivateLink)
+Concepts & Architecture:
+1. The Problem: Private subnets have NO internet access. How do they reach AWS services (S3, SQS, Bedrock)?
+   - Solution: VPC Endpoints.
+
+2. Types of Endpoints Used:
+   A. Gateway Endpoints (The "Portal"):
+      - Used for: S3 (and DynamoDB).
+      - Mechanism: Modifies the Route Table directly (routes traffic to S3).
+      - Cost: FREE.
+      - Location: Resides "outside" the subnet at the routing layer.
+
+   B. Interface Endpoints (The "Tunnel"):
+      - Used for: SQS, Bedrock, SSM, ECR, Secrets Manager.
+      - Mechanism: Creates a Network Interface (ENI) with a private IP (e.g., 10.0.1.99) INSIDE your subnet.
+      - DNS Magic: "private_dns_enabled=True" hijacks the standard AWS DNS to point to this local private IP.
+      - Cost: Paid (hourly + data processing).
+      - Security: protected by Security Groups (unlike Gateway endpoints).
+
+3. Why these specific endpoints?
+   - S3/SQS/Secrets/Bedrock: Core application dependencies.
+   - SSM/SSMMessages/EC2Messages: Enables "Session Manager" (secure shell access) without opening Port 22 or using Bastion hosts.
+   - ECR (API/DKR): Allows private EC2 instances to pull Docker images without public internet access.
 """
 
 import pulumi

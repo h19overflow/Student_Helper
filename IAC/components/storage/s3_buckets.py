@@ -1,11 +1,21 @@
 """
-Storage buckets component for documents and vectors.
+S3 Buckets Component for Documents, Vectors, and Frontend Assets.
 
-Creates:
-- Documents bucket (S3): Uploaded PDFs with versioning
-- Vectors bucket (S3 Vectors): Native vector embeddings storage
-- Vectors index: 3072-dim cosine index for text-embedding-004
-- Frontend bucket (S3): Static website assets
+Three Buckets, Three Purposes:
+1. Documents Bucket: User-uploaded PDFs.
+   - Access: EC2/Lambda via IAM + S3 Gateway Endpoint (private, never public).
+   - Features: Versioning (protect overwrites), Encryption (AES256), PublicAccessBlock (absolute lockdown).
+
+2. Vectors Bucket: AI embeddings for semantic search.
+   - Access: EC2/Lambda via IAM (private).
+   - Features: Native vector storage, cosine similarity search, filterable metadata.
+
+3. Frontend Bucket: Static HTML/JS/CSS for the web app.
+   - Access: CloudFront ONLY via OAI (Origin Access Identity).
+   - Direct S3 URL → DENIED. Must go through CDN.
+   - Website config with SPA routing (error_document="index.html").
+
+Security Principle: All buckets are PRIVATE. Access is granted via IAM Roles (for compute) or OAI (for CloudFront).
 """
 
 from dataclasses import dataclass

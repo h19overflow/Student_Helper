@@ -1,11 +1,22 @@
 """
-Security groups component for network access control.
+Security Groups Component for Network Access Control.
 
-Creates four security groups:
-- sg-backend: EC2 backend (inbound 8000 from API Gateway)
-- sg-lambda: Lambda processor (outbound only)
-- sg-database: RDS PostgreSQL (inbound 5432 from backend/lambda)
-- sg-endpoints: VPC endpoints (inbound 443 from backend/lambda)
+Architectural Steps & Flow:
+1. Create "Shell" Security Groups:
+   - Identitiy Badges: We first create the SG objects (Backend, Database, ALB, etc.) without rules. This allows them to exist so they can be referenced by ID.
+
+2. Define Rules (Micro-Segmentation):
+   - Ingress (Inbound): "Who can enter?" defined by referencing Source SGs (Identity-based) rather than IPs where possible.
+   - Egress (Outbound): "Who can I talk to?" generally open for backend services to fetch updates/APIs.
+
+3. Specific Access Patterns:
+   - ALB: Accepts HTTP from CloudFront (via Prefix List) & forwards to Backend.
+   - Backend: Accepts traffic ONLY from ALB (on port 8000).
+   - Database: Extremely restricted. Accepts traffic ONLY from Backend/Lambda (on port 5432). Rejects everything else.
+   - Self-Reference: Used for internal VPC Link communication.
+
+4. Stateful Nature:
+   - Remember: Security Groups are stateful. Allowing an Inbound request AUTOMATICALLY allows the Outbound reply.
 """
 
 from dataclasses import dataclass
@@ -191,15 +202,20 @@ class SecurityGroupsComponent(pulumi.ComponentResource):
             opts=opts,
         )
 
-        # ALB: Allow inbound HTTP from VPC (for API Gateway VPC Link)
+        # Get CloudFront Managed Prefix List
+        cloudfront_prefix_list = aws.ec2.get_managed_prefix_list(
+            name="com.amazonaws.global.cloudfront.origin-facing"
+        )
+
+        # ALB: Allow inbound HTTP from CloudFront (Internet-facing ALB restricted by Prefix List)
         aws.vpc.SecurityGroupIngressRule(
             f"{name}-alb-ingress-http",
             security_group_id=self.alb_sg.id,
             ip_protocol="tcp",
             from_port=PORTS["http"],
             to_port=PORTS["http"],
-            cidr_ipv4="10.0.0.0/16",  # VPC CIDR for VPC Link
-            description="HTTP from VPC Link",
+            prefix_list_id=cloudfront_prefix_list.id,
+            description="HTTP from CloudFront",
             opts=opts,
         )
 

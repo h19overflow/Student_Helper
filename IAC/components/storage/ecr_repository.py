@@ -1,10 +1,17 @@
 """
-ECR repository component for Lambda container images.
+ECR Repository Component for Lambda Container Images.
 
-Creates:
-- ECR repository for Lambda processor container images
-- Lifecycle policy to manage image retention
-- Image scanning configuration for security
+What It Stores: Docker images for Lambda (up to 10GB each).
+
+Access Control - Who Can Pull:
+1. Lambda Service → Granted via Repository Policy (ecr:BatchGetImage, ecr:GetDownloadUrlForLayer) ✅
+2. EC2 (if needed) → Via IAM Role + ECR VPC Endpoints (ecr.api, ecr.dkr) ✅
+3. Public Internet → DENIED ❌ (Private repository)
+
+Key Features:
+- scan_on_push=True: Every image is scanned for CVEs (vulnerabilities) on upload.
+- Lifecycle Policy: Auto-delete old images, keep only the last 5 (saves storage costs).
+- Encryption: Images encrypted at rest (AES256).
 """
 
 from dataclasses import dataclass

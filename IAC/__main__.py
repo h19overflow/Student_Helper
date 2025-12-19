@@ -38,12 +38,10 @@ from IAC.components.messaging.sqs_queues import SqsQueuesComponent
 from IAC.components.compute.ec2_backend import Ec2BackendComponent
 from IAC.components.compute.lambda_processor import LambdaProcessorComponent
 from IAC.components.compute.alb import AlbComponent
-from IAC.components.compute.nlb import NlbComponent
 
 # Edge
 from IAC.components.edge.cloudfront import CloudFrontComponent
 from IAC.components.edge.api_gateway import ApiGatewayComponent
-from IAC.components.edge.websocket_api_gateway import WebSocketApiGatewayComponent
 
 
 def main() -> None:
@@ -141,27 +139,12 @@ def main() -> None:
     )
     alb_outputs = alb.get_outputs()
 
-    # NLB for WebSocket traffic (WebSocket API via VPC Link V1)
-    nlb = NlbComponent(
-        name=namer.name("websocket"),
-        environment=config.environment,
-        vpc_id=vpc_outputs.vpc_id,
-        subnet_ids=[vpc_outputs.private_subnet_id, vpc_outputs.lambda_subnet_id],
-    )
-    nlb_outputs = nlb.get_outputs()
+    alb_outputs = alb.get_outputs()
 
     # Register EC2 with ALB target group (HTTP API)
     alb_target_group_attachment = aws.lb.TargetGroupAttachment(
         f"{base_name}-alb-tg-attachment",
         target_group_arn=alb_outputs.target_group_arn,
-        target_id=ec2_outputs.instance_id,
-        port=8000,
-    )
-
-    # Register EC2 with NLB target group (WebSocket API)
-    nlb_target_group_attachment = aws.lb.TargetGroupAttachment(
-        f"{base_name}-nlb-tg-attachment",
-        target_group_arn=nlb_outputs.target_group_arn,
         target_id=ec2_outputs.instance_id,
         port=8000,
     )
@@ -187,6 +170,7 @@ def main() -> None:
         frontend_bucket_name=s3_outputs.frontend_bucket_name,
         frontend_bucket_arn=s3_outputs.frontend_bucket_arn,
         frontend_bucket_domain=s3_outputs.frontend_website_endpoint,
+        alb_dns_name=alb_outputs.alb_dns_name,
     )
 
     api_gateway = ApiGatewayComponent(
@@ -199,15 +183,7 @@ def main() -> None:
     )
     api_outputs = api_gateway.get_outputs()
 
-    # WebSocket API Gateway with VPC Link V1 to NLB
-    # (HTTP API uses VPC Link V2 to ALB)
-    websocket_api = WebSocketApiGatewayComponent(
-        name=base_name,
-        environment=config.environment,
-        nlb_arn=nlb_outputs.nlb_arn,
-        nlb_dns_name=nlb_outputs.nlb_dns_name,
-    )
-    websocket_api_outputs = websocket_api.get_outputs()
+    api_outputs = api_gateway.get_outputs()
 
     # --- Exports ---
     outputs = {
@@ -224,7 +200,6 @@ def main() -> None:
         "frontend_bucket": s3_outputs.frontend_bucket_name,
         "sqs_queue_url": sqs_outputs.queue_url,
         "api_endpoint": api_outputs.api_endpoint,
-        "websocket_api_endpoint": websocket_api_outputs.api_endpoint,
         "cloudfront_domain": cloudfront.distribution.domain_name,
     }
 

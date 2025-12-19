@@ -1,10 +1,17 @@
 """
-EC2 backend component for FastAPI application.
+EC2 Backend Component for FastAPI Application.
 
-Creates:
-- EC2 instance in private subnet
-- User data script for application bootstrap
-- CloudWatch log group for application logs
+This is the FINAL DESTINATION of an inbound request (CloudFront → API Gateway → ALB → EC2).
+
+Key Components:
+1. AMI (Amazon Machine Image): The OS/software template. We use Amazon Linux 2023 with Docker pre-installed.
+2. User Data: Bootstrap script that runs ONCE at first boot. Installs dependencies, creates directories, sets up systemd service.
+3. Instance Profile: Links an IAM Role to the EC2, granting permissions to call AWS APIs (Secrets Manager, S3, etc.).
+4. Placement:
+   - subnet_id: Lives in PRIVATE subnet (no public IP, no direct internet).
+   - security_group_id: Firewall. Only allows inbound from ALB on port 8000.
+5. Storage (root_block_device): 30GB gp3 SSD, encrypted at rest.
+6. IMDSv2 (http_tokens="required"): Secures metadata service against SSRF attacks. Always enable this.
 """
 
 from dataclasses import dataclass

@@ -1,10 +1,28 @@
 """
-API Gateway component for backend routing.
+API Gateway Component for Backend Routing.
 
-Creates:
-- HTTP API (API Gateway v2)
-- VPC Link for private ALB access
-- Routes proxying to FastAPI backend via ALB
+Concept: "Expose a private backend to the internet without making the backend public."
+API Gateway acts as a Managed Proxy.
+
+The 5-Resource Dependency Chain:
+1. VPC Link: Creates ENIs in your private subnets. API Gateway uses these to "tunnel" into your VPC.
+2. API: The HTTP API container (protocol type, CORS settings).
+3. Integration: The wiring. Tells API GW HOW to reach the backend (via VPC Link) and WHERE (the ALB Listener ARN).
+4. Route: The URL map. Matches paths like "ANY /{proxy+}" and forwards to the Integration.
+5. Stage: The deployment. Publishes the API and gives you a live URL. "$default" = clean URL.
+
+CRITICAL DISTINCTION: VPC Link vs VPC Endpoint:
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ VPC Endpoint (PrivateLink):                                                         │
+│   - Direction: OUTBOUND (Your VPC resources → AWS Services)                         │
+│   - Purpose: Lets your private EC2/Lambda reach S3, SQS, Bedrock WITHOUT internet.  │
+│   - "I'm inside the VPC, I want to reach an AWS service privately."                 │
+│                                                                                      │
+│ VPC Link (API Gateway Feature):                                                     │
+│   - Direction: INBOUND (External AWS Service → Your VPC)                            │
+│   - Purpose: Lets API Gateway (a public AWS service) reach INTO your private VPC.   │
+│   - "I'm outside the VPC, I need a tunnel to get inside."                           │
+└─────────────────────────────────────────────────────────────────────────────────────┘
 """
 
 from dataclasses import dataclass

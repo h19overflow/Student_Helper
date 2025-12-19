@@ -1,10 +1,25 @@
 """
-VPC component resource for network infrastructure.
+VPC Component Resource for Network Infrastructure.
 
-Creates VPC with three subnets:
-- Private subnet (10.0.1.0/24): EC2 backend
-- Lambda subnet (10.0.2.0/24): Lambda processor
-- Data subnet (10.0.3.0/24): RDS PostgreSQL
+Steps & Architecture:
+1. VPC (10.0.0.0/16): Defines the isolated network container.
+2. Internet Gateway (IGW): created first to serve as the "door" to the internet.
+3. Subnets:
+   - Public (10.0.0.0/24): For resources needing direct entry/exit (e.g. NAT).
+   - Private (10.0.1.0/24): EC2 Backend (isolated).
+   - Lambda (10.0.2.0/24): Document processor (isolated).
+   - Data (10.0.3.0/24 & 10.0.4.0/24): RDS instances (Multi-AZ).
+4. Route Tables:
+   - Public RT: Contains 0.0.0.0/0 -> IGW.
+     * Maps the path to the Internet Gateway for all external traffic.
+     * Enables Bidirectional Flow ↔️: While the IGW receives inbound requests, this route is REQUIRED for your servers to send the return traffic (replies) back to the internet.
+   - Private RT: No internet route. Relies on the implicit "local" route for internal traffic.
+5. Associations: Explicitly linking subnets to route tables to enforce these rules.
+
+Why this Design?
+- Security via Isolation: Backend and Data layers have no route to the internet, preventing direct attacks.
+- Traffic Control: Explicit route tables ensure we know exactly where traffic can go.
+- Internal Communication: Relies on the automatic "local" route (10.0.0.0/16) allowing EC2 to talk to RDS privately and securely without leaving the AWS fabric.
 """
 
 from dataclasses import dataclass
@@ -25,7 +40,6 @@ class VpcOutputs:
     data_subnet_id: pulumi.Output[str]
     data_subnet_id_b: pulumi.Output[str]
     private_route_table_id: pulumi.Output[str]
-
 
 class VpcComponent(pulumi.ComponentResource):
     """
@@ -84,7 +98,6 @@ class VpcComponent(pulumi.ComponentResource):
             tags=create_tags(environment, f"{name}-private-subnet"),
             opts=child_opts,
         )
-
         self.lambda_subnet = aws.ec2.Subnet(
             f"{name}-lambda-subnet",
             vpc_id=self.vpc.id,

@@ -1,10 +1,26 @@
 """
-Application Load Balancer component for backend traffic distribution.
+Application Load Balancer Component for Backend Traffic Distribution.
 
-Creates:
-- Internal ALB in private subnets
-- Target group for EC2 backend
-- HTTP listener on port 80
+Core Jobs:
+1. Distribute Traffic: Spread requests across multiple EC2 instances.
+2. Health Check: Constantly ping servers. If one dies, stop sending traffic there.
+3. Stable Endpoint: EC2s come and go, but the ALB DNS stays the same.
+
+The 3-Resource Chain:
+1. Load Balancer: The "building". Has a DNS name. Receives all incoming traffic.
+2. Listener: The "door/ear". Binds to a PORT (e.g., 80). Defines WHAT to do when traffic arrives (forward, redirect, etc.).
+   - Without a Listener, the ALB is DEAF. It ignores all traffic.
+   - Multiple Listeners = Multiple doors (e.g., port 80 redirects to 443, port 443 forwards to EC2s).
+3. Target Group: The "pool of servers". Contains healthy EC2 instances. ALB picks one and forwards the request.
+
+Connection to API Gateway / CloudFront:
+- The Listener exposes an ARN (unique identifier).
+- API Gateway's Integration uses `integration_uri=listener_arn` to know WHERE to forward traffic.
+- CloudFront uses the ALB's DNS name as an Origin.
+
+WebSocket Considerations:
+- idle_timeout=600: Keep connections alive for 10 minutes even if no data flows.
+- stickiness: Ensure the same client always hits the same server (stateful WebSocket connections).
 """
 
 from dataclasses import dataclass
@@ -46,11 +62,11 @@ class AlbComponent(pulumi.ComponentResource):
 
         child_opts = pulumi.ResourceOptions(parent=self)
 
-        # Application Load Balancer (internal, not internet-facing)
+        # Application Load Balancer (internet-facing for CloudFront access)
         self.alb = aws.lb.LoadBalancer(
             f"{name}-alb",
             name=f"{name}-alb",
-            internal=True,  # Private ALB, accessed via VPC Link
+            internal=False,  # Public ALB, restricted by Security Group (Prefix List)
             load_balancer_type="application",
             security_groups=[security_group_id],
             subnets=subnet_ids,

@@ -8,6 +8,7 @@ Dependencies: langchain.tools, backend.boundary.vdb
 System role: Search tool for RAG agent context retrieval
 """
 
+import logging
 from typing import TYPE_CHECKING
 
 from fastapi.concurrency import run_in_threadpool
@@ -15,6 +16,8 @@ from langchain_core.tools import tool
 
 if TYPE_CHECKING:
     from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
+
+logger = logging.getLogger(__name__)
 
 
 def create_search_tool(vector_store: "S3VectorsStore"):
@@ -42,14 +45,22 @@ def create_search_tool(vector_store: "S3VectorsStore"):
         Returns:
             str: Formatted context with chunk metadata
         """
-        # Run synchronous vector store search in threadpool to prevent event loop blocking
-        results = await run_in_threadpool(
-            vector_store.similarity_search,
-            query=query,
-            k=k,
-        )
+        logger.info(f"{__name__}:search_documents - START query_len={len(query)}, k={k}")
+
+        try:
+            logger.info(f"{__name__}:search_documents - Calling vector_store.similarity_search")
+            results = await run_in_threadpool(
+                vector_store.similarity_search,
+                query=query,
+                k=k,
+            )
+            logger.info(f"{__name__}:search_documents - Got {len(results)} results")
+        except Exception as e:
+            logger.error(f"{__name__}:search_documents - similarity_search FAILED: {type(e).__name__}: {e}")
+            raise
 
         if not results:
+            logger.warning(f"{__name__}:search_documents - No results found")
             return "No relevant documents found."
 
         formatted_chunks = []
@@ -65,6 +76,8 @@ relevance_score: {result.similarity_score:.3f}
 ---"""
             formatted_chunks.append(chunk_text)
 
-        return "\n".join(formatted_chunks)
+        output = "\n".join(formatted_chunks)
+        logger.info(f"{__name__}:search_documents - END output_len={len(output)}")
+        return output
 
     return search_documents

@@ -38,6 +38,7 @@ dependencies = [
     "langchain-postgres>=0.0.16",
     "psycopg[binary]>=3.3.2",
     "pypdf>=6.4.2",
+    "tenacity>=9.1.2",
 ]
 
 [project.optional-dependencies]

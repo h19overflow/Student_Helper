@@ -3,16 +3,29 @@ S3 Vectors store for production retrieval.
 
 Provides retrieval interface using Amazon S3 Vectors with session filtering.
 Supports session-isolated search and hybrid retrieval preparation.
+Includes exponential backoff retry for Bedrock throttling.
+Uses LRU cache for embeddings to reduce API calls.
 
-Dependencies: langchain_aws, backend.boundary.vdb.vector_schemas
+Dependencies: langchain_aws, backend.boundary.vdb.vector_schemas, tenacity, boto3
 System role: Production vector store (S3 Vectors)
 """
 
+import hashlib
 import logging
+from functools import lru_cache
 from typing import Any
 
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
 from langchain_aws import BedrockEmbeddings
 from langchain_aws.vectorstores import AmazonS3Vectors
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 from backend.boundary.vdb.vector_schemas import (
     VectorMetadata,
@@ -20,6 +33,84 @@ from backend.boundary.vdb.vector_schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Module-level embedding cache (persists across requests)
+_embedding_cache: dict[str, list[float]] = {}
+_CACHE_MAX_SIZE = 1000
+
+
+def _get_cache_key(text: str) -> str:
+    """Create a hash key for caching embeddings."""
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+class CachedBedrockEmbeddings:
+    """
+    Wrapper around BedrockEmbeddings with LRU caching.
+
+    Caches embedding results to avoid repeated API calls for identical queries.
+    """
+
+    def __init__(self, embeddings: BedrockEmbeddings) -> None:
+        self._embeddings = embeddings
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embed documents with caching."""
+        results = []
+        uncached_texts = []
+        uncached_indices = []
+
+        # Check cache first
+        for i, text in enumerate(texts):
+            key = _get_cache_key(text)
+            if key in _embedding_cache:
+                results.append(_embedding_cache[key])
+                logger.debug(f"{__name__}:embed_documents - Cache HIT for text hash {key}")
+            else:
+                results.append(None)  # Placeholder
+                uncached_texts.append(text)
+                uncached_indices.append(i)
+
+        # Fetch uncached embeddings
+        if uncached_texts:
+            logger.info(f"{__name__}:embed_documents - Cache MISS: fetching {len(uncached_texts)} embeddings")
+            new_embeddings = self._embeddings.embed_documents(uncached_texts)
+
+            # Store in cache and results
+            for idx, text, embedding in zip(uncached_indices, uncached_texts, new_embeddings):
+                key = _get_cache_key(text)
+                if len(_embedding_cache) < _CACHE_MAX_SIZE:
+                    _embedding_cache[key] = embedding
+                results[idx] = embedding
+        else:
+            logger.info(f"{__name__}:embed_documents - All {len(texts)} embeddings from cache")
+
+        return results
+
+    def embed_query(self, text: str) -> list[float]:
+        """Embed a single query with caching."""
+        key = _get_cache_key(text)
+
+        if key in _embedding_cache:
+            logger.info(f"{__name__}:embed_query - Cache HIT for query")
+            return _embedding_cache[key]
+
+        logger.info(f"{__name__}:embed_query - Cache MISS: calling Bedrock API")
+        embedding = self._embeddings.embed_query(text)
+
+        if len(_embedding_cache) < _CACHE_MAX_SIZE:
+            _embedding_cache[key] = embedding
+
+        return embedding
+
+
+def _is_throttling_error(exception: BaseException) -> bool:
+    """Check if exception is a Bedrock throttling error."""
+    if isinstance(exception, ClientError):
+        error_code = exception.response.get("Error", {}).get("Code", "")
+        return error_code in ("ThrottlingException", "TooManyRequestsException")
+    # Also catch throttling wrapped in other exceptions
+    return "ThrottlingException" in str(exception) or "Too many requests" in str(exception)
 
 
 class S3VectorsStore:
@@ -35,6 +126,7 @@ class S3VectorsStore:
         vectors_bucket: str = "student-helper-dev-vectors",
         index_name: str = "documents",
         region: str = "ap-southeast-2",
+        embedding_region: str = "us-east-1",
         embedding_model_id: str = "amazon.titan-embed-text-v2:0",
     ) -> None:
         """
@@ -43,23 +135,69 @@ class S3VectorsStore:
         Args:
             vectors_bucket: S3 Vectors bucket name
             index_name: Index name within the bucket
-            region: AWS region
+            region: AWS region for S3 Vectors
+            embedding_region: AWS region for Bedrock embeddings (us-east-1 has higher quota)
             embedding_model_id: Bedrock embedding model ID
         """
         self._vectors_bucket = vectors_bucket
         self._index_name = index_name
         self._region = region
+        self._embedding_region = embedding_region
 
-        self._embeddings = BedrockEmbeddings(
-            model_id=embedding_model_id,
-            region_name=region,
+        # Create boto3 client with NO internal retries
+        # This lets our tenacity retry control all backoff behavior
+        no_retry_config = Config(
+            retries={"max_attempts": 0, "mode": "standard"},
+            read_timeout=30,
+            connect_timeout=10,
         )
+        bedrock_client = boto3.client(
+            "bedrock-runtime",
+            region_name=embedding_region,  # Use separate region for embeddings
+            config=no_retry_config,
+        )
+
+        logger.info(
+            f"{__name__}:__init__ - Creating BedrockEmbeddings in {embedding_region} (S3 Vectors in {region})"
+        )
+
+        base_embeddings = BedrockEmbeddings(
+            model_id=embedding_model_id,
+            region_name=embedding_region,  # Use separate region for embeddings
+            client=bedrock_client,  # Use our no-retry client
+        )
+
+        # Wrap with cache to reduce API calls
+        self._embeddings = CachedBedrockEmbeddings(base_embeddings)
+        logger.info(f"{__name__}:__init__ - Using CachedBedrockEmbeddings wrapper")
 
         self._vector_store = AmazonS3Vectors(
             vector_bucket_name=vectors_bucket,
             index_name=index_name,
             embedding=self._embeddings,
             region_name=region,
+        )
+
+    @retry(
+        retry=retry_if_exception_type((ClientError, Exception)),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential_jitter(initial=1, max=30, jitter=5),
+        before_sleep=lambda retry_state: logger.warning(
+            f"{__name__}:similarity_search - Retry {retry_state.attempt_number}/5 after throttling"
+        ),
+        reraise=True,
+    )
+    def _search_with_retry(
+        self,
+        query: str,
+        k: int,
+        filter_dict: dict[str, Any] | None,
+    ) -> list[tuple]:
+        """Execute similarity search with retry on throttling."""
+        return self._vector_store.similarity_search_with_score(
+            query=query,
+            k=k,
+            filter=filter_dict,
         )
 
     def similarity_search(
@@ -72,6 +210,8 @@ class S3VectorsStore:
         """
         Search for similar documents with optional filtering.
 
+        Includes exponential backoff retry for Bedrock throttling errors.
+
         Args:
             query: Search query text
             k: Number of results to return
@@ -80,6 +220,9 @@ class S3VectorsStore:
 
         Returns:
             list[VectorSearchResult]: Search results with scores and metadata
+
+        Raises:
+            ClientError: After max retries exhausted for throttling
         """
         filter_dict: dict[str, Any] = {}
         if session_id:
@@ -88,10 +231,10 @@ class S3VectorsStore:
             filter_dict["doc_id"] = doc_id
 
         try:
-            results = self._vector_store.similarity_search_with_score(
+            results = self._search_with_retry(
                 query=query,
                 k=k,
-                filter=filter_dict if filter_dict else None,
+                filter_dict=filter_dict if filter_dict else None,
             )
 
             search_results = []
@@ -113,23 +256,21 @@ class S3VectorsStore:
                     )
                 )
 
-            logger.debug(
-                "Similarity search completed",
-                extra={
-                    "query_preview": query[:50],
-                    "k": k,
-                    "result_count": len(search_results),
-                    "session_id": session_id,
-                },
+            logger.info(
+                f"{__name__}:similarity_search - Found {len(search_results)} results",
+                extra={"session_id": session_id, "k": k},
             )
 
             return search_results
 
+        except ClientError as e:
+            if _is_throttling_error(e):
+                logger.error(f"{__name__}:similarity_search - ThrottlingException: Max retries exhausted")
+            else:
+                logger.error(f"{__name__}:similarity_search - {type(e).__name__}: {e}")
+            raise
         except Exception as e:
-            logger.exception(
-                "Similarity search failed",
-                extra={"query_preview": query[:50], "error": str(e)},
-            )
+            logger.error(f"{__name__}:similarity_search - {type(e).__name__}: {e}")
             raise
 
     def max_marginal_relevance_search(

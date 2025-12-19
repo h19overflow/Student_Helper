@@ -54,10 +54,12 @@ async def lifespan(app: FastAPI):
         logger.info("Initializing S3 Vectors store and RAG agent")
 
         # Create vector store (reused across all requests)
+        # Both S3 Vectors and embeddings in ap-southeast-2 (same VPC region)
         vector_store = S3VectorsStore(
             vectors_bucket="student-helper-dev-vectors",
             index_name="documents",
             region="ap-southeast-2",
+            embedding_region="ap-southeast-2",
         )
         logger.info("S3 Vectors store initialized")
 

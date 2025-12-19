@@ -129,7 +129,7 @@ def main() -> None:
     )
     ec2_outputs = ec2_backend.get_outputs()
 
-    # ALB for EC2 backend (HTTP API traffic via VPC Link V2)
+    # ALB for EC2 backend (internal, accessed via API Gateway VPC Link)
     alb = AlbComponent(
         name=namer.name("backend"),
         environment=config.environment,
@@ -164,15 +164,7 @@ def main() -> None:
     lambda_outputs = lambda_processor.get_outputs()
 
     # --- Layer 6: Edge Services ---
-    cloudfront = CloudFrontComponent(
-        name=base_name,
-        environment=config.environment,
-        frontend_bucket_name=s3_outputs.frontend_bucket_name,
-        frontend_bucket_arn=s3_outputs.frontend_bucket_arn,
-        frontend_bucket_domain=s3_outputs.frontend_website_endpoint,
-        alb_dns_name=alb_outputs.alb_dns_name,
-    )
-
+    # API Gateway first (CloudFront depends on its endpoint)
     api_gateway = ApiGatewayComponent(
         name=base_name,
         environment=config.environment,
@@ -183,7 +175,15 @@ def main() -> None:
     )
     api_outputs = api_gateway.get_outputs()
 
-    api_outputs = api_gateway.get_outputs()
+    # CloudFront routes to API Gateway (which routes to internal ALB via VPC Link)
+    cloudfront = CloudFrontComponent(
+        name=base_name,
+        environment=config.environment,
+        frontend_bucket_name=s3_outputs.frontend_bucket_name,
+        frontend_bucket_arn=s3_outputs.frontend_bucket_arn,
+        frontend_bucket_domain=s3_outputs.frontend_website_endpoint,
+        api_gateway_endpoint=api_outputs.api_endpoint,
+    )
 
     # --- Exports ---
     outputs = {

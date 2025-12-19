@@ -16,6 +16,10 @@ class VectorStoreSettings(BaseSettings):
     """S3 Vectors configuration."""
 
     aws_region: str = Field(default="ap-southeast-2", description="AWS region for S3 Vectors")
+    embedding_region: str = Field(
+        default="us-east-1",
+        description="AWS region for Bedrock embeddings (us-east-1 has higher quota)",
+    )
     index_name: str = Field(default="legal-search-vectors", description="S3 Vectors index name")
 
     embedding_model: str = Field(

@@ -202,23 +202,6 @@ class SecurityGroupsComponent(pulumi.ComponentResource):
             opts=opts,
         )
 
-        # Get CloudFront Managed Prefix List
-        cloudfront_prefix_list = aws.ec2.get_managed_prefix_list(
-            name="com.amazonaws.global.cloudfront.origin-facing"
-        )
-
-        # ALB: Allow inbound HTTP from CloudFront (Internet-facing ALB restricted by Prefix List)
-        aws.vpc.SecurityGroupIngressRule(
-            f"{name}-alb-ingress-http",
-            security_group_id=self.alb_sg.id,
-            ip_protocol="tcp",
-            from_port=PORTS["http"],
-            to_port=PORTS["http"],
-            prefix_list_id=cloudfront_prefix_list.id,
-            description="HTTP from CloudFront",
-            opts=opts,
-        )
-
         # ALB: Allow outbound to backend
         aws.vpc.SecurityGroupEgressRule(
             f"{name}-alb-egress-backend",
@@ -228,6 +211,19 @@ class SecurityGroupsComponent(pulumi.ComponentResource):
             to_port=PORTS["fastapi"],
             referenced_security_group_id=self.backend_sg.id,
             description="To backend FastAPI",
+            opts=opts,
+        )
+
+        # ALB: Allow inbound from self (VPC Link ENI → ALB on port 80)
+        # VPC Link ENIs use alb_sg, need to reach ALB on port 80
+        aws.vpc.SecurityGroupIngressRule(
+            f"{name}-alb-ingress-vpclink",
+            security_group_id=self.alb_sg.id,
+            ip_protocol="tcp",
+            from_port=PORTS["http"],
+            to_port=PORTS["http"],
+            referenced_security_group_id=self.alb_sg.id,
+            description="VPC Link to ALB (self-reference)",
             opts=opts,
         )
 

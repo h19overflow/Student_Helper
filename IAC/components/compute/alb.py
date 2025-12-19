@@ -62,11 +62,11 @@ class AlbComponent(pulumi.ComponentResource):
 
         child_opts = pulumi.ResourceOptions(parent=self)
 
-        # Application Load Balancer (internet-facing for CloudFront access)
+        # Internal Application Load Balancer (accessed via API Gateway VPC Link)
         self.alb = aws.lb.LoadBalancer(
             f"{name}-alb",
             name=f"{name}-alb",
-            internal=False,  # Public ALB, restricted by Security Group (Prefix List)
+            internal=True,  # Internal ALB, accessed via VPC Link from API Gateway
             load_balancer_type="application",
             security_groups=[security_group_id],
             subnets=subnet_ids,

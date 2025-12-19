@@ -35,6 +35,8 @@ from IAC.utils.tags import create_tags
 class VpcOutputs:
     """Output values from VPC component."""
     vpc_id: pulumi.Output[str]
+    public_subnet_id: pulumi.Output[str]
+    public_subnet_id_b: pulumi.Output[str]
     private_subnet_id: pulumi.Output[str]
     lambda_subnet_id: pulumi.Output[str]
     data_subnet_id: pulumi.Output[str]
@@ -78,7 +80,7 @@ class VpcComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
-        # Create public subnet for NAT Gateway
+        # Create public subnets (2 AZs required for internet-facing ALB)
         self.public_subnet = aws.ec2.Subnet(
             f"{name}-public-subnet",
             vpc_id=self.vpc.id,
@@ -86,6 +88,16 @@ class VpcComponent(pulumi.ComponentResource):
             availability_zone=AVAILABILITY_ZONES[0],
             map_public_ip_on_launch=True,
             tags=create_tags(environment, f"{name}-public-subnet"),
+            opts=child_opts,
+        )
+
+        self.public_subnet_b = aws.ec2.Subnet(
+            f"{name}-public-subnet-b",
+            vpc_id=self.vpc.id,
+            cidr_block="10.0.5.0/24",
+            availability_zone=AVAILABILITY_ZONES[1],
+            map_public_ip_on_launch=True,
+            tags=create_tags(environment, f"{name}-public-subnet-b"),
             opts=child_opts,
         )
 
@@ -130,6 +142,8 @@ class VpcComponent(pulumi.ComponentResource):
 
         self.register_outputs({
             "vpc_id": self.vpc.id,
+            "public_subnet_id": self.public_subnet.id,
+            "public_subnet_id_b": self.public_subnet_b.id,
             "private_subnet_id": self.private_subnet.id,
             "lambda_subnet_id": self.lambda_subnet.id,
             "data_subnet_id": self.data_subnet.id,
@@ -164,6 +178,13 @@ class VpcComponent(pulumi.ComponentResource):
             opts=opts,
         )
 
+        aws.ec2.RouteTableAssociation(
+            f"{name}-public-rt-assoc-b",
+            subnet_id=self.public_subnet_b.id,
+            route_table_id=public_rt.id,
+            opts=opts,
+        )
+
         # Private route table (VPC-only routing)
         # All external access (Bedrock, etc.) goes through VPC Endpoints
         self.private_rt = aws.ec2.RouteTable(
@@ -192,6 +213,8 @@ class VpcComponent(pulumi.ComponentResource):
         """Get VPC output values."""
         return VpcOutputs(
             vpc_id=self.vpc.id,
+            public_subnet_id=self.public_subnet.id,
+            public_subnet_id_b=self.public_subnet_b.id,
             private_subnet_id=self.private_subnet.id,
             lambda_subnet_id=self.lambda_subnet.id,
             data_subnet_id=self.data_subnet.id,

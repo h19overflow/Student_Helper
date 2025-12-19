@@ -10,6 +10,7 @@ Dependencies: langchain.agents, langchain_aws, backend.boundary.vdb
 System role: RAG Q&A agent orchestration
 """
 
+import logging
 from collections.abc import AsyncGenerator
 
 from fastapi.concurrency import run_in_threadpool
@@ -26,6 +27,8 @@ from backend.core.agentic_system.agent.rag_agent_prompt import (
 from backend.core.agentic_system.agent.rag_agent_schema import RAGResponse
 from backend.core.agentic_system.agent.rag_agent_tool import create_search_tool
 from backend.models.streaming import StreamEvent, StreamEventType, StreamingCitation
+
+logger = logging.getLogger(__name__)
 
 
 class RAGAgent:
@@ -190,128 +193,178 @@ class RAGAgent:
         Yields:
             StreamEvent: Context, token, citations, and complete events
         """
-        # 1. Retrieve context directly from vector store
-        # Session filtering ensures isolation between sessions
-        # Run in threadpool to prevent blocking event loop (boto3 is synchronous)
-        search_results = await run_in_threadpool(
-            self._vector_store.similarity_search,
-            query=question,
-            k=5,
-            session_id=session_id,
-        )
+        logger.info(f"{__name__}:astream - START session_id={session_id}, question_len={len(question)}")
 
-        # 2. Extract citations from search results
-        citations = [
-            StreamingCitation(
-                chunk_id=result.chunk_id,
-                doc_name=result.metadata.source_uri.split("/")[-1] if result.metadata.source_uri else "unknown",
-                page=result.metadata.page,
-                section=result.metadata.section,
-                source_uri=result.metadata.source_uri,
+        # Step 1: Retrieve context from vector store
+        try:
+            logger.info(f"{__name__}:astream - Step 1: Calling similarity_search (k=5)")
+            search_results = await run_in_threadpool(
+                self._vector_store.similarity_search,
+                query=question,
+                k=5,
+                session_id=session_id,
             )
-            for result in search_results
-        ]
+            logger.info(f"{__name__}:astream - Step 1 OK: Retrieved {len(search_results)} chunks")
+        except Exception as e:
+            logger.error(f"{__name__}:astream - Step 1 FAILED: similarity_search - {type(e).__name__}: {e}")
+            raise
 
-        # 3. Yield context event with citation metadata
-        yield StreamEvent(
-            event=StreamEventType.CONTEXT,
-            data={
-                "chunks": [
-                    {
-                        "chunk_id": result.chunk_id,
-                        "content_snippet": result.content[:200],
-                        "page": result.metadata.page,
-                        "section": result.metadata.section,
-                        "source_uri": result.metadata.source_uri,
-                        "relevance_score": result.similarity_score,
-                    }
-                    for result in search_results
-                ]
-            },
-        )
+        # Step 2: Extract citations from search results
+        try:
+            logger.info(f"{__name__}:astream - Step 2: Extracting citations")
+            citations = [
+                StreamingCitation(
+                    chunk_id=result.chunk_id,
+                    doc_name=result.metadata.source_uri.split("/")[-1] if result.metadata.source_uri else "unknown",
+                    page=result.metadata.page,
+                    section=result.metadata.section,
+                    source_uri=result.metadata.source_uri,
+                )
+                for result in search_results
+            ]
+            logger.info(f"{__name__}:astream - Step 2 OK: Extracted {len(citations)} citations")
+        except Exception as e:
+            logger.error(f"{__name__}:astream - Step 2 FAILED: citation extraction - {type(e).__name__}: {e}")
+            raise
 
-        # 4. Format context for prompt (hide internal IDs from LLM)
-        if not search_results:
-            context_text = "No relevant documents found."
-        else:
-            formatted_chunks = []
-            for result in search_results:
-                # Format with page/section for LLM citation, omit internal chunk_id
-                page_info = f"Page {result.metadata.page}" if result.metadata.page else "Page unknown"
-                section_info = f", Section: {result.metadata.section}" if result.metadata.section else ""
-                chunk_text = f"""---
+        # Step 3: Yield context event with citation metadata
+        try:
+            logger.info(f"{__name__}:astream - Step 3: Yielding CONTEXT event")
+            yield StreamEvent(
+                event=StreamEventType.CONTEXT,
+                data={
+                    "chunks": [
+                        {
+                            "chunk_id": result.chunk_id,
+                            "content_snippet": result.content[:200],
+                            "page": result.metadata.page,
+                            "section": result.metadata.section,
+                            "source_uri": result.metadata.source_uri,
+                            "relevance_score": result.similarity_score,
+                        }
+                        for result in search_results
+                    ]
+                },
+            )
+            logger.info(f"{__name__}:astream - Step 3 OK: CONTEXT event yielded")
+        except Exception as e:
+            logger.error(f"{__name__}:astream - Step 3 FAILED: CONTEXT event - {type(e).__name__}: {e}")
+            raise
+
+        # Step 4: Format context for prompt
+        try:
+            logger.info(f"{__name__}:astream - Step 4: Formatting context for prompt")
+            if not search_results:
+                context_text = "No relevant documents found."
+                logger.warning(f"{__name__}:astream - No search results, using fallback context")
+            else:
+                formatted_chunks = []
+                for result in search_results:
+                    page_info = f"Page {result.metadata.page}" if result.metadata.page else "Page unknown"
+                    section_info = f", Section: {result.metadata.section}" if result.metadata.section else ""
+                    chunk_text = f"""---
 [{page_info}{section_info}]
 
 {result.content}
 ---"""
-                formatted_chunks.append(chunk_text)
-            context_text = "\n".join(formatted_chunks)
+                    formatted_chunks.append(chunk_text)
+                context_text = "\n".join(formatted_chunks)
+            logger.info(f"{__name__}:astream - Step 4 OK: context_len={len(context_text)}")
+        except Exception as e:
+            logger.error(f"{__name__}:astream - Step 4 FAILED: context formatting - {type(e).__name__}: {e}")
+            raise
 
-        # 5. Format chat history
-        history_text = ""
-        if chat_history:
-            formatted_messages = [
-                f"{'User' if msg.type == 'human' else 'Assistant'}: {msg.content}"
-                for msg in chat_history
-            ]
-            history_text = "Previous Conversation:\n" + "\n".join(formatted_messages) + "\n"
+        # Step 5: Format chat history
+        try:
+            logger.info(f"{__name__}:astream - Step 5: Formatting chat history")
+            history_text = ""
+            if chat_history:
+                formatted_messages = [
+                    f"{'User' if msg.type == 'human' else 'Assistant'}: {msg.content}"
+                    for msg in chat_history
+                ]
+                history_text = "Previous Conversation:\n" + "\n".join(formatted_messages) + "\n"
+            logger.info(f"{__name__}:astream - Step 5 OK: history_len={len(history_text)}, msg_count={len(chat_history) if chat_history else 0}")
+        except Exception as e:
+            logger.error(f"{__name__}:astream - Step 5 FAILED: history formatting - {type(e).__name__}: {e}")
+            raise
 
-        # 6. Build prompt messages
-        prompt = get_rag_prompt(
-            use_registry=self._use_prompt_registry,
-            label=self._prompt_label,
-        )
-        messages = prompt.invoke({
-            "context": context_text,
-            "question": question,
-            "chat_history": history_text,
-        }).to_messages()
+        # Step 6: Build prompt messages
+        try:
+            logger.info(f"{__name__}:astream - Step 6: Building prompt messages")
+            prompt = get_rag_prompt(
+                use_registry=self._use_prompt_registry,
+                label=self._prompt_label,
+            )
+            messages = prompt.invoke({
+                "context": context_text,
+                "question": question,
+                "chat_history": history_text,
+            }).to_messages()
+            logger.info(f"{__name__}:astream - Step 6 OK: Built {len(messages)} messages")
+        except Exception as e:
+            logger.error(f"{__name__}:astream - Step 6 FAILED: prompt building - {type(e).__name__}: {e}")
+            raise
 
-        # 7. Stream tokens from model
+        # Step 7: Stream tokens from model
         full_answer = ""
         token_index = 0
-        async for chunk in self._model.astream(messages):
-            if chunk.content:
-                # Handle both string and list content from Bedrock
-                if isinstance(chunk.content, list):
-                    # If content is a list of items, convert to string
-                    token_content = "".join(
-                        str(item) if isinstance(item, str) else (item.get("text", "") if isinstance(item, dict) else str(item))
-                        for item in chunk.content
+        try:
+            logger.info(f"{__name__}:astream - Step 7: Starting LLM stream (model={self._model_id})")
+            async for chunk in self._model.astream(messages):
+                if chunk.content:
+                    # Handle both string and list content from Bedrock
+                    if isinstance(chunk.content, list):
+                        token_content = "".join(
+                            str(item) if isinstance(item, str) else (item.get("text", "") if isinstance(item, dict) else str(item))
+                            for item in chunk.content
+                        )
+                    else:
+                        token_content = str(chunk.content)
+
+                    full_answer += token_content
+                    yield StreamEvent(
+                        event=StreamEventType.TOKEN,
+                        data={"token": token_content, "index": token_index},
                     )
-                else:
-                    # If content is already a string
-                    token_content = str(chunk.content)
+                    token_index += 1
 
-                full_answer += token_content
-                yield StreamEvent(
-                    event=StreamEventType.TOKEN,
-                    data={"token": token_content, "index": token_index},
-                )
-                token_index += 1
+                    # Log first few tokens for debugging
+                    if token_index <= 3:
+                        logger.info(f"{__name__}:astream - Token #{token_index}: '{token_content[:50]}'")
 
-        # 8. Yield citations
-        yield StreamEvent(
-            event=StreamEventType.CITATIONS,
-            data={
-                "citations": [citation.model_dump() for citation in citations]
-            },
-        )
+            logger.info(f"{__name__}:astream - Step 7 OK: Streamed {token_index} tokens, answer_len={len(full_answer)}")
+        except Exception as e:
+            logger.error(f"{__name__}:astream - Step 7 FAILED: LLM streaming - {type(e).__name__}: {e}")
+            raise
 
-        # 9. Yield completion event
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(
-            "Sending completion event",
-            extra={
-                "full_answer_length": len(full_answer),
-                "full_answer_preview": full_answer[:100] if full_answer else "EMPTY",
-            },
-        )
-        yield StreamEvent(
-            event=StreamEventType.COMPLETE,
-            data={"full_answer": full_answer},
-        )
+        # Step 8: Yield citations
+        try:
+            logger.info(f"{__name__}:astream - Step 8: Yielding CITATIONS event")
+            yield StreamEvent(
+                event=StreamEventType.CITATIONS,
+                data={
+                    "citations": [citation.model_dump() for citation in citations]
+                },
+            )
+            logger.info(f"{__name__}:astream - Step 8 OK: CITATIONS event yielded")
+        except Exception as e:
+            logger.error(f"{__name__}:astream - Step 8 FAILED: CITATIONS event - {type(e).__name__}: {e}")
+            raise
+
+        # Step 9: Yield completion event
+        try:
+            logger.info(f"{__name__}:astream - Step 9: Yielding COMPLETE event (answer_len={len(full_answer)})")
+            yield StreamEvent(
+                event=StreamEventType.COMPLETE,
+                data={"full_answer": full_answer},
+            )
+            logger.info(f"{__name__}:astream - Step 9 OK: COMPLETE event yielded")
+        except Exception as e:
+            logger.error(f"{__name__}:astream - Step 9 FAILED: COMPLETE event - {type(e).__name__}: {e}")
+            raise
+
+        logger.info(f"{__name__}:astream - END session_id={session_id}")
 
 
 if __name__ == "__main__":

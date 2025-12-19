@@ -13,3 +13,6 @@ wheels/
 
 # Project-specific
 CLAUDE.md
+
+# Deployment scripts
+backend/scripts/

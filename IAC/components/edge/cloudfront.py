@@ -2,20 +2,20 @@
 CloudFront CDN Component for Frontend Distribution.
 
 Architectural Strategy: "Single Domain / Unified Frontend"
-1. The Problem: Connecting a Frontend (S3) and Backend (ALB) usually involves two domains, leading to CORS issues and complex configurations.
+1. The Problem: Connecting a Frontend (S3) and Backend (API Gateway) usually involves two domains, leading to CORS issues.
 2. The Solution: Use CloudFront as the global router/proxy.
    - https://domain.com/      -> S3 (Frontend Assets)
-   - https://domain.com/api/* -> ALB (Backend API)
-   - https://domain.com/ws/*  -> ALB (WebSockets)
+   - https://domain.com/api/* -> API Gateway -> VPC Link -> ALB -> EC2
+   - https://domain.com/ws/*  -> API Gateway -> VPC Link -> ALB -> EC2
 
 Key Components:
 1. Origins (Sources of Truth):
    - S3 Origin: Stores static HTML/JS/CSS. Secured via OAI (Origin Access Identity) so users CANNOT bypass CloudFront.
-   - ALB Origin: The dynamic backend server.
+   - API Gateway Origin: Routes to internal ALB via VPC Link.
 
 2. Behavior Rules (The Router):
-   - /ws/*: Disables caching, enables "Origin Request Policies" to forward WebSocket headers (Upgrade, Connection).
-   - /api/*: Disables caching, forwards Authorization headers.
+   - /ws/*: Disables caching, forwards WebSocket headers to API Gateway.
+   - /api/*: Disables caching, forwards Authorization headers to API Gateway.
    - Default (*): Caches static assets globally for high performance.
 
 3. "SPA Hack" (Custom Error Responses):
@@ -44,7 +44,7 @@ class CloudFrontComponent(pulumi.ComponentResource):
         frontend_bucket_name: pulumi.Input[str],
         frontend_bucket_arn: pulumi.Input[str],
         frontend_bucket_domain: pulumi.Input[str],
-        alb_dns_name: pulumi.Input[str],
+        api_gateway_endpoint: pulumi.Input[str],
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("custom:edge:CloudFront", name, None, opts)
@@ -85,13 +85,17 @@ class CloudFrontComponent(pulumi.ComponentResource):
             default_root_object="index.html",
             price_class="PriceClass_100",  # US, Canada, Europe only
             origins=[
+                # API Gateway origin - extract domain from endpoint URL
+                # api_gateway_endpoint format: https://abc123.execute-api.region.amazonaws.com
                 aws.cloudfront.DistributionOriginArgs(
-                    domain_name=alb_dns_name,
-                    origin_id="alb-backend",
+                    domain_name=api_gateway_endpoint.apply(
+                        lambda url: url.replace("https://", "").replace("http://", "")
+                    ),
+                    origin_id="api-gateway",
                     custom_origin_config=aws.cloudfront.DistributionOriginCustomOriginConfigArgs(
                         http_port=80,
                         https_port=443,
-                        origin_protocol_policy="http-only",
+                        origin_protocol_policy="https-only",
                         origin_ssl_protocols=["TLSv1.2"],
                     ),
                 ),
@@ -105,10 +109,10 @@ class CloudFrontComponent(pulumi.ComponentResource):
             ],
 
             ordered_cache_behaviors=[
-                # WebSocket path - forward everything to ALB
+                # WebSocket path - forward to API Gateway
                 aws.cloudfront.DistributionOrderedCacheBehaviorArgs(
                     path_pattern="/ws/*",
-                    target_origin_id="alb-backend",
+                    target_origin_id="api-gateway",
                     viewer_protocol_policy="redirect-to-https",
                     allowed_methods=["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
                     cached_methods=["GET", "HEAD"],
@@ -124,10 +128,10 @@ class CloudFrontComponent(pulumi.ComponentResource):
                         headers=["Host", "Sec-WebSocket-Key", "Sec-WebSocket-Version", "Sec-WebSocket-Protocol"],
                     ),
                 ),
-                # API path - forward to ALB (optional, but good for unification)
+                # API path - forward to API Gateway
                 aws.cloudfront.DistributionOrderedCacheBehaviorArgs(
                     path_pattern="/api/*",
-                    target_origin_id="alb-backend",
+                    target_origin_id="api-gateway",
                     viewer_protocol_policy="redirect-to-https",
                     allowed_methods=["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
                     cached_methods=["GET", "HEAD"],

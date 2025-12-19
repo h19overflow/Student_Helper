@@ -19,3 +19,7 @@ Dockerfile
 tests
 __tests__
 README.md
+
+# Evaluation module (development only, not for Docker image)
+evaluation/
+backend/evaluation/

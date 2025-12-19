@@ -16,3 +16,9 @@ CLAUDE.md
 
 # Deployment scripts
 backend/scripts/
+
+# Evaluation artifacts (development only, not for production)
+backend/evaluation/results/
+backend/evaluation/baselines/
+backend/evaluation/experiments/
+*.evaluation.json

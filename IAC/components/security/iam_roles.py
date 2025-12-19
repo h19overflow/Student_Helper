@@ -147,6 +147,15 @@ class IamRolesComponent(pulumi.ComponentResource):
                     {
                         "Effect": "Allow",
                         "Action": [
+                            "s3vectors:GetVectors",
+                            "s3vectors:QueryVectors",
+                            "s3vectors:ListVectors",
+                        ],
+                        "Resource": ["arn:aws:s3vectors:*:*:*"],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
                             "ecr:GetAuthorizationToken",
                         ],
                         "Resource": ["*"],

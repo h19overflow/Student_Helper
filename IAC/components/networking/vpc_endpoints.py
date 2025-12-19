@@ -166,6 +166,19 @@ class VpcEndpointsComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
+        # S3 Vectors Interface Endpoint (required for VectorBucket access)
+        self.s3_vectors_endpoint = aws.ec2.VpcEndpoint(
+            f"{name}-s3-vectors-endpoint",
+            vpc_id=vpc_id,
+            service_name=f"com.amazonaws.{region.id}.s3vectors",
+            vpc_endpoint_type="Interface",
+            subnet_ids=subnet_ids,
+            security_group_ids=[security_group_id],
+            private_dns_enabled=True,
+            tags=create_tags(environment, f"{name}-s3-vectors-endpoint"),
+            opts=child_opts,
+        )
+
         self.register_outputs({
             "s3_endpoint_id": self.s3_endpoint.id,
             "sqs_endpoint_id": self.sqs_endpoint.id,
@@ -176,4 +189,5 @@ class VpcEndpointsComponent(pulumi.ComponentResource):
             "ec2messages_endpoint_id": self.ec2messages_endpoint.id,
             "ecr_api_endpoint_id": self.ecr_api_endpoint.id,
             "ecr_dkr_endpoint_id": self.ecr_dkr_endpoint.id,
+            "s3_vectors_endpoint_id": self.s3_vectors_endpoint.id,
         })

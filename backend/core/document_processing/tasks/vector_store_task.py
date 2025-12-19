@@ -34,6 +34,7 @@ class VectorStoreTask:
         vectors_bucket: str,
         index_name: str = "documents",
         region: str = "ap-southeast-2",
+        embedding_region: str = "us-east-1",
         embedding_model_id: str = "amazon.titan-embed-text-v2:0",
     ) -> None:
         """
@@ -42,7 +43,8 @@ class VectorStoreTask:
         Args:
             vectors_bucket: S3 Vectors bucket name
             index_name: Index name within the bucket
-            region: AWS region for both S3 Vectors and Bedrock
+            region: AWS region for S3 Vectors
+            embedding_region: AWS region for Bedrock embeddings (us-east-1 has higher quota)
             embedding_model_id: Bedrock embedding model ID
 
         Raises:
@@ -56,10 +58,11 @@ class VectorStoreTask:
         self.vectors_bucket = vectors_bucket
         self.index_name = index_name
         self.region = region
+        self.embedding_region = embedding_region
 
         self._embeddings = BedrockEmbeddings(
             model_id=embedding_model_id,
-            region_name=region,
+            region_name=embedding_region,
         )
         self._vector_store: AmazonS3Vectors | None = None
 

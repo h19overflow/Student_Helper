@@ -87,6 +87,23 @@ class S3BucketsComponent(pulumi.ComponentResource):
             )],
             opts=child_opts,
         )
+
+        # CORS configuration for direct uploads from CloudFront
+        aws.s3.BucketCorsConfiguration(
+            f"{name}-documents-cors",
+            bucket=self.documents_bucket.id,
+            cors_rules=[
+                aws.s3.BucketCorsConfigurationCorsRuleArgs(
+                    allowed_headers=["*"],
+                    allowed_methods=["PUT", "POST", "GET", "HEAD"],
+                    allowed_origins=["*"],  # Allow all origins (CloudFront, localhost)
+                    expose_headers=["ETag"],
+                    max_age_seconds=3000,
+                )
+            ],
+            opts=child_opts,
+        )
+
         # S3 Vectors bucket for embeddings storage
         self.vectors_bucket = aws_native.s3vectors.VectorBucket(
             f"{name}-vectors",
@@ -98,14 +115,14 @@ class S3BucketsComponent(pulumi.ComponentResource):
         )
 
         # Vector index for document embeddings
-        # Dimension 1536 matches Amazon Titan Embeddings v2
+        # Dimension 1024 matches Amazon Titan Embeddings v2
         # text_content stored as non-filterable (large context, not for queries)
         # Filterable by default: document_id, session_id, page_number, chunk_index
         self.vectors_index = aws_native.s3vectors.Index(
             f"{name}-vectors-index",
             vector_bucket_name=self.vectors_bucket.vector_bucket_name,
             index_name="documents",
-            dimension=1536,
+            dimension=1024,
             data_type="float32",
             distance_metric="cosine",
             metadata_configuration=aws_native.s3vectors.IndexMetadataConfigurationArgs(

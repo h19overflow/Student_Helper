@@ -37,7 +37,11 @@ class DocumentPipelineSettings(BaseSettings):
     # AWS Bedrock settings
     bedrock_region: str = Field(
         default="ap-southeast-2",
-        description="AWS region for Bedrock",
+        description="AWS region for S3 Vectors bucket",
+    )
+    embedding_region: str = Field(
+        default="us-east-1",
+        description="AWS region for Bedrock embeddings (us-east-1 has higher quota)",
     )
     embedding_model_id: str = Field(
         default="amazon.titan-embed-text-v2:0",

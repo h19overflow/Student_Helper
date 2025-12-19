@@ -27,7 +27,7 @@ from backend.core.agentic_system.agent.rag_agent_prompt import (
 from backend.core.agentic_system.agent.rag_agent_schema import RAGResponse
 from backend.core.agentic_system.agent.rag_agent_tool import create_search_tool
 from backend.models.streaming import StreamEvent, StreamEventType, StreamingCitation
-
+from langchain_google_genai import ChatGoogleGenerativeAI
 logger = logging.getLogger(__name__)
 
 
@@ -43,7 +43,7 @@ class RAGAgent:
     def __init__(
         self,
         vector_store: S3VectorsStore,
-        model_id: str = "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        model_id: str = "gemini-3-flash-preview",
         region: str = "ap-southeast-2",
         temperature: float = 0.0,
         use_prompt_registry: bool = False,
@@ -66,16 +66,16 @@ class RAGAgent:
         self._model_id = model_id
         self._temperature = temperature
 
-        self._model = ChatBedrockConverse(
+        # Initialize streaming model (used by astream method)
+        self._model = ChatGoogleGenerativeAI(
             model=model_id,
-            region_name=region,
             temperature=temperature,
         )
 
         self._search_tool = create_search_tool(vector_store)
 
         self._agent = create_agent(
-            model=self._model,
+            model="google_genai:gemini-3-flash-preview",
             tools=[self._search_tool],
             response_format=ToolStrategy(RAGResponse),
         )

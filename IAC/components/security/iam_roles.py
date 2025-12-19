@@ -150,6 +150,8 @@ class IamRolesComponent(pulumi.ComponentResource):
                             "s3vectors:GetVectors",
                             "s3vectors:QueryVectors",
                             "s3vectors:ListVectors",
+                            "s3vectors:GetIndex",
+                            "s3vectors:PutVectors",
                         ],
                         "Resource": ["arn:aws:s3vectors:*:*:*"],
                     },

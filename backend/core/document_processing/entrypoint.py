@@ -51,6 +51,7 @@ class DocumentPipeline:
             vectors_bucket=self._settings.vectors_bucket,
             index_name=self._settings.vectors_index,
             region=self._settings.bedrock_region,
+            embedding_region=self._settings.embedding_region,
             embedding_model_id=self._settings.embedding_model_id,
         )
 

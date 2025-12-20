@@ -13,8 +13,12 @@ from pydantic_settings import BaseSettings
 
 
 class VectorStoreSettings(BaseSettings):
-    """S3 Vectors configuration."""
+    """Vector store configuration (FAISS for dev, S3 Vectors for prod)."""
 
+    store_type: str = Field(
+        default="faiss",
+        description="Vector store type: 'faiss' for local dev, 's3' for production",
+    )
     aws_region: str = Field(default="ap-southeast-2", description="AWS region for S3 Vectors")
     embedding_region: str = Field(
         default="us-east-1",

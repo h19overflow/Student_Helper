@@ -36,7 +36,7 @@ class DatabaseSettings(BaseSettings):
     pool_timeout: int = Field(default=30, description="Connection pool timeout in seconds")
     echo_sql: bool = Field(default=False, description="Echo SQL statements to logs")
 
-    sslmode: str = Field(default="require", description="SSL mode for RDS connections")
+    sslmode: str = Field(default="disable", description="SSL mode for database connections (override with POSTGRES_SSLMODE)")
 
     @property
     def database_url(self) -> str:

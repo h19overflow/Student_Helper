@@ -19,7 +19,7 @@ from langchain.agents.structured_output import ToolStrategy
 from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import BaseMessage
 
-from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
+from backend.boundary.vdb.vector_store_factory import get_vector_store
 from backend.core.agentic_system.agent.rag_agent_prompt import (
     get_rag_prompt,
     register_rag_prompt,
@@ -42,7 +42,7 @@ class RAGAgent:
 
     def __init__(
         self,
-        vector_store: S3VectorsStore,
+        vector_store=None,
         model_id: str = "gemini-3-flash-preview",
         region: str = "ap-southeast-2",
         temperature: float = 0.0,
@@ -53,13 +53,16 @@ class RAGAgent:
         Initialize RAG agent with vector store and model.
 
         Args:
-            vector_store: S3VectorsStore instance for retrieval
+            vector_store: Vector store instance (FAISS or S3Vectors). If None, uses factory.
             model_id: Bedrock model identifier
             region: AWS region for Bedrock
             temperature: Model temperature (0.0 for deterministic)
             use_prompt_registry: Whether to fetch prompts from Langfuse
             prompt_label: Optional label filter when using registry
         """
+        # Use factory to select vector store based on environment if not provided
+        if vector_store is None:
+            vector_store = get_vector_store()
         self._vector_store = vector_store
         self._use_prompt_registry = use_prompt_registry
         self._prompt_label = prompt_label
@@ -367,10 +370,3 @@ class RAGAgent:
         logger.info(f"{__name__}:astream - END session_id={session_id}")
 
 
-if __name__ == "__main__":
-    from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
-
-    vector_store = S3VectorsStore()
-    agent = RAGAgent(vector_store)
-    result = agent.invoke("What does hamza do , and how many projects does he have?")
-    print(result)

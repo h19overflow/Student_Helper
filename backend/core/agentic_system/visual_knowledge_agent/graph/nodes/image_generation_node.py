@@ -37,38 +37,69 @@ def image_generation_node(
         dict: State update with image_base64, mime_type or error
     """
     try:
-        logger.info(
-            f"{__name__}:image_generation_node - START "
-            f"prompt_len={len(state['image_generation_prompt'])}"
-        )
+        # Step 1: Validate input state
+        try:
+            prompt = state["image_generation_prompt"]
+            logger.info(
+                f"{__name__}:image_generation_node - START "
+                f"prompt_len={len(prompt)}"
+            )
+        except Exception as e:
+            logger.error(
+                f"{__name__}:image_generation_node - FAILED at state validation - "
+                f"{type(e).__name__}: {e}. Available keys: {state.keys()}",
+                exc_info=True
+            )
+            raise
 
-        # Call Gemini image generation
-        logger.debug(f"{__name__}:image_generation_node - Calling Gemini API")
-        response = google_client.models.generate_content(
-            model="gemini-3-pro-image-preview",
-            contents=state["image_generation_prompt"],
-        )
+        # Step 2: Call Gemini image generation
+        try:
+            logger.debug(f"{__name__}:image_generation_node - Calling Gemini API")
+            response = google_client.models.generate_content(
+                model="gemini-3-pro-image-preview",
+                contents=prompt,
+            )
+            logger.info(f"{__name__}:image_generation_node - Gemini API called successfully")
+        except Exception as e:
+            logger.error(
+                f"{__name__}:image_generation_node - FAILED at Gemini API call - "
+                f"{type(e).__name__}: {e}",
+                exc_info=True
+            )
+            raise
 
-        # Extract image from response (nano_trial.py pattern)
-        logger.debug(f"{__name__}:image_generation_node - Extracting image from response")
-        for candidate in response.candidates:
-            for part in candidate.content.parts:
-                if hasattr(part, "inline_data") and part.inline_data:
-                    image_data = part.inline_data
-                    image_base64 = base64.b64encode(image_data.data).decode("utf-8")
+        # Step 3: Extract image from response
+        try:
+            logger.debug(f"{__name__}:image_generation_node - Extracting image from response")
+            for candidate in response.candidates:
+                for part in candidate.content.parts:
+                    if hasattr(part, "inline_data") and part.inline_data:
+                        image_data = part.inline_data
+                        image_base64 = base64.b64encode(image_data.data).decode("utf-8")
 
-                    logger.info(
-                        f"{__name__}:image_generation_node - END "
-                        f"image_len={len(image_base64)}, mime_type={image_data.mime_type}"
-                    )
+                        logger.info(
+                            f"{__name__}:image_generation_node - END "
+                            f"image_len={len(image_base64)}, mime_type={image_data.mime_type}"
+                        )
 
-                    return {
-                        "image_base64": image_base64,
-                        "mime_type": image_data.mime_type,
-                    }
+                        return {
+                            "image_base64": image_base64,
+                            "mime_type": image_data.mime_type,
+                        }
 
-        raise ValueError("No image data found in Gemini response")
+            raise ValueError("No image data found in Gemini response")
+        except Exception as e:
+            logger.error(
+                f"{__name__}:image_generation_node - FAILED at image extraction - "
+                f"{type(e).__name__}: {e}",
+                exc_info=True
+            )
+            raise
 
     except Exception as e:
-        logger.error(f"{__name__}:image_generation_node - {type(e).__name__}: {e}")
+        logger.error(
+            f"{__name__}:image_generation_node - FINAL ERROR - "
+            f"{type(e).__name__}: {str(e)[:200]}",
+            exc_info=True
+        )
         return {"error": str(e)}

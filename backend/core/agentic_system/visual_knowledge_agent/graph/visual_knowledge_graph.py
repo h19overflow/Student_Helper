@@ -61,30 +61,31 @@ def create_visual_knowledge_graph(
         # Create graph with state schema
         graph = StateGraph(VisualKnowledgeState)
 
-        # Add nodes with dependency injection via closures
+        # Define node wrappers with dependency injection
+        async def expansion_wrapper(state):
+            return await document_expansion_node(state, vector_store)
+
+        def curation_wrapper(state):
+            return curation_node(state, curation_agent)
+
+        def generation_wrapper(state):
+            return image_generation_node(state, google_client)
+
+        # Add nodes
         logger.debug(
             f"{__name__}:create_visual_knowledge_graph - Adding document_expansion node"
         )
-        graph.add_node(
-            "document_expansion",
-            lambda state: document_expansion_node(state, vector_store),
-        )
+        graph.add_node("document_expansion", expansion_wrapper)
 
         logger.debug(
             f"{__name__}:create_visual_knowledge_graph - Adding curation node"
         )
-        graph.add_node(
-            "curation",
-            lambda state: curation_node(state, curation_agent),
-        )
+        graph.add_node("curation", curation_wrapper)
 
         logger.debug(
             f"{__name__}:create_visual_knowledge_graph - Adding image_generation node"
         )
-        graph.add_node(
-            "image_generation",
-            lambda state: image_generation_node(state, google_client),
-        )
+        graph.add_node("image_generation", generation_wrapper)
 
         # Define pipeline flow (linear: expansion → curation → generation)
         logger.debug(f"{__name__}:create_visual_knowledge_graph - Setting entry point")

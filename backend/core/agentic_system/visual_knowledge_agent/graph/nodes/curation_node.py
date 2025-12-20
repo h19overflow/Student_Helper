@@ -46,39 +46,107 @@ def curation_node(
             f"expanded_docs={len(state['expanded_docs'])}"
         )
 
-        # Format expanded docs for prompt
-        docs_text = "\n".join(
-            [
-                f"---\n{doc.metadata.source_uri}\n{doc.content}\n---"
-                for doc in state["expanded_docs"]
-            ]
-        )
+        # Step 1: Format expanded docs for prompt
+        try:
+            docs_text = "\n".join(
+                [
+                    f"---\n{doc.metadata.source_uri}\n{doc.content}\n---"
+                    for doc in state["expanded_docs"]
+                ]
+            )
+            logger.debug(f"{__name__}:curation_node - Formatted {len(state['expanded_docs'])} docs")
+        except Exception as e:
+            logger.error(
+                f"{__name__}:curation_node - FAILED at docs_text formatting - "
+                f"{type(e).__name__}: {e}",
+                exc_info=True
+            )
+            raise
 
-        # Get prompt template and format
-        prompt = get_visual_knowledge_prompt()
-        messages = prompt.format_messages(expanded_docs=docs_text)
+        # Step 2: Get prompt template and format
+        try:
+            prompt = get_visual_knowledge_prompt()
+            messages = prompt.format_messages(expanded_docs=docs_text)
+            logger.debug(f"{__name__}:curation_node - Prompt formatted with messages")
+        except Exception as e:
+            logger.error(
+                f"{__name__}:curation_node - FAILED at prompt formatting - "
+                f"{type(e).__name__}: {e}",
+                exc_info=True
+            )
+            raise
 
-        # Invoke curation agent with structured output
-        logger.debug(f"{__name__}:curation_node - Invoking curation agent")
-        result = curation_agent.invoke({"messages": messages})
+        # Step 3: Invoke curation agent with structured output
+        try:
+            logger.debug(f"{__name__}:curation_node - Invoking curation agent")
+            result = curation_agent.invoke({"messages": messages})
+            logger.info(f"{__name__}:curation_node - Agent invoked successfully")
+        except Exception as e:
+            logger.error(
+                f"{__name__}:curation_node - FAILED at agent.invoke - "
+                f"{type(e).__name__}: {e}",
+                exc_info=True
+            )
+            raise
 
-        # Extract structured response
-        curation_result = result.get("structured_response")
-        if not curation_result:
-            raise ValueError("Curation agent did not return structured_response")
+        # Step 4: Extract structured response
+        try:
+            logger.debug(
+                f"{__name__}:curation_node - Agent result type: {type(result).__name__}, "
+                f"keys: {result.keys() if isinstance(result, dict) else 'N/A'}"
+            )
+            curation_result = result.get("structured_response") if isinstance(result, dict) else result
+            logger.info(f"{__name__}:curation_node - Extracted structured_response")
+        except Exception as e:
+            logger.error(
+                f"{__name__}:curation_node - FAILED at extracting structured_response - "
+                f"{type(e).__name__}: {e}. Result type: {type(result).__name__}",
+                exc_info=True
+            )
+            raise
 
-        logger.info(
-            f"{__name__}:curation_node - END "
-            f"concepts={len(curation_result.main_concepts)}, "
-            f"branches={len(curation_result.branches)}"
-        )
+        # Step 5: Validate curation result
+        try:
+            if not curation_result:
+                raise ValueError("structured_response is None or empty")
+            logger.debug(
+                f"{__name__}:curation_node - Curation result type: {type(curation_result).__name__}"
+            )
+        except Exception as e:
+            logger.error(
+                f"{__name__}:curation_node - FAILED at validation - "
+                f"{type(e).__name__}: {e}",
+                exc_info=True
+            )
+            raise
+
+        # Step 6: Extract fields from curation result
+        try:
+            main_concepts = curation_result.main_concepts
+            branches = curation_result.branches
+            image_prompt = curation_result.image_generation_prompt
+            logger.info(
+                f"{__name__}:curation_node - END "
+                f"concepts={len(main_concepts)}, branches={len(branches)}"
+            )
+        except Exception as e:
+            logger.error(
+                f"{__name__}:curation_node - FAILED at extracting fields from result - "
+                f"{type(e).__name__}: {e}. Result: {curation_result}",
+                exc_info=True
+            )
+            raise
 
         return {
-            "main_concepts": curation_result.main_concepts,
-            "branches": curation_result.branches,
-            "image_generation_prompt": curation_result.image_generation_prompt,
+            "main_concepts": main_concepts,
+            "branches": branches,
+            "image_generation_prompt": image_prompt,
         }
 
     except Exception as e:
-        logger.error(f"{__name__}:curation_node - {type(e).__name__}: {e}")
+        logger.error(
+            f"{__name__}:curation_node - FINAL ERROR - "
+            f"{type(e).__name__}: {str(e)[:200]}",
+            exc_info=True
+        )
         return {"error": str(e)}

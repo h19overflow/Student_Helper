@@ -20,6 +20,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from langchain_aws import BedrockEmbeddings
 from langchain_aws.vectorstores import AmazonS3Vectors
+from langchain_core.embeddings import Embeddings
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -44,18 +45,21 @@ def _get_cache_key(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-class CachedBedrockEmbeddings:
+class CachedBedrockEmbeddings(Embeddings):
     """
     Wrapper around BedrockEmbeddings with LRU caching.
 
     Caches embedding results to avoid repeated API calls for identical queries.
+    Inherits from LangChain's Embeddings base class for compatibility with FAISS and other vector stores.
     """
 
     def __init__(self, embeddings: BedrockEmbeddings) -> None:
+        logger.info(f"{__name__}:CachedBedrockEmbeddings.__init__ - Initializing with embeddings type={type(embeddings).__name__}")
         self._embeddings = embeddings
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed documents with caching."""
+        logger.info(f"{__name__}:embed_documents - START: Caching {len(texts)} texts")
         results = []
         uncached_texts = []
         uncached_indices = []
@@ -73,35 +77,48 @@ class CachedBedrockEmbeddings:
 
         # Fetch uncached embeddings
         if uncached_texts:
-            logger.info(f"{__name__}:embed_documents - Cache MISS: fetching {len(uncached_texts)} embeddings")
-            new_embeddings = self._embeddings.embed_documents(uncached_texts)
+            logger.info(f"{__name__}:embed_documents - Cache MISS: fetching {len(uncached_texts)} embeddings from base embeddings")
+            try:
+                new_embeddings = self._embeddings.embed_documents(uncached_texts)
+                logger.info(f"{__name__}:embed_documents - Received {len(new_embeddings)} embeddings from base")
 
-            # Store in cache and results
-            for idx, text, embedding in zip(uncached_indices, uncached_texts, new_embeddings):
-                key = _get_cache_key(text)
-                if len(_embedding_cache) < _CACHE_MAX_SIZE:
-                    _embedding_cache[key] = embedding
-                results[idx] = embedding
+                # Store in cache and results
+                for idx, text, embedding in zip(uncached_indices, uncached_texts, new_embeddings, strict=True):
+                    key = _get_cache_key(text)
+                    if len(_embedding_cache) < _CACHE_MAX_SIZE:
+                        _embedding_cache[key] = embedding
+                    results[idx] = embedding
+            except Exception as e:
+                logger.error(f"{__name__}:embed_documents - FAILED to embed documents: {type(e).__name__}: {e}", exc_info=True)
+                raise
         else:
             logger.info(f"{__name__}:embed_documents - All {len(texts)} embeddings from cache")
 
+        logger.info(f"{__name__}:embed_documents - SUCCESS: Returning {len(results)} embeddings")
         return results
 
     def embed_query(self, text: str) -> list[float]:
         """Embed a single query with caching."""
+        logger.info(f"{__name__}:embed_query - START: Query text_len={len(text)}")
         key = _get_cache_key(text)
 
         if key in _embedding_cache:
-            logger.info(f"{__name__}:embed_query - Cache HIT for query")
+            logger.info(f"{__name__}:embed_query - Cache HIT for query (key={key[:8]}...)")
             return _embedding_cache[key]
 
         logger.info(f"{__name__}:embed_query - Cache MISS: calling Bedrock API")
-        embedding = self._embeddings.embed_query(text)
+        try:
+            embedding = self._embeddings.embed_query(text)
+            logger.info(f"{__name__}:embed_query - Received embedding from Bedrock (dim={len(embedding)})")
 
-        if len(_embedding_cache) < _CACHE_MAX_SIZE:
-            _embedding_cache[key] = embedding
+            if len(_embedding_cache) < _CACHE_MAX_SIZE:
+                _embedding_cache[key] = embedding
+                logger.info(f"{__name__}:embed_query - Cached embedding (cache_size={len(_embedding_cache)})")
 
-        return embedding
+            return embedding
+        except Exception as e:
+            logger.error(f"{__name__}:embed_query - FAILED to embed query: {type(e).__name__}: {e}", exc_info=True)
+            raise
 
 
 def _is_throttling_error(exception: BaseException) -> bool:

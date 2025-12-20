@@ -92,32 +92,48 @@ class FAISSVectorsStore:
     def _load_or_create_index(self) -> FAISS:
         """Load existing FAISS index or create new one."""
         try:
-            logger.info(f"{__name__}:_load_or_create_index - Loading existing index")
+            logger.info(f"{__name__}:_load_or_create_index - START: Attempting to load existing index from {FAISS_INDEX_DIR}")
             self._vector_store = FAISS.load_local(
                 str(FAISS_INDEX_DIR),
                 self._embeddings,
                 index_name=self._index_name,
             )
-            logger.info(f"{__name__}:_load_or_create_index - Index loaded successfully")
+            logger.info(f"{__name__}:_load_or_create_index - SUCCESS: Index loaded successfully")
             return self._vector_store
-        except Exception:
-            logger.info(f"{__name__}:_load_or_create_index - Creating new FAISS index")
+        except Exception as e:
+            logger.info(f"{__name__}:_load_or_create_index - Index load failed ({type(e).__name__}): {e}, creating new index")
 
         # Create empty index with a dummy document
-        dummy_embedding = self._embeddings.embed_query("dummy")
-        import faiss
+        logger.info(f"{__name__}:_load_or_create_index - Creating new FAISS index")
+        try:
+            logger.info(f"{__name__}:_load_or_create_index - Step 1: Generating dummy embedding")
+            dummy_embedding = self._embeddings.embed_query("dummy")
+            logger.info(f"{__name__}:_load_or_create_index - Step 1 OK: dummy_embedding type={type(dummy_embedding)}, length={len(dummy_embedding) if isinstance(dummy_embedding, list) else 'N/A'}")
 
-        dimension = len(dummy_embedding)
-        index = faiss.IndexFlatL2(dimension)
-        vector_store = FAISS(
-            embedding_function=self._embeddings,
-            index=index,
-            docstore={},
-            index_to_docstore_id={},
-        )
-        vector_store.save_local(str(FAISS_INDEX_DIR), index_name=self._index_name)
-        logger.info(f"{__name__}:_load_or_create_index - New index created")
-        return vector_store
+            import faiss
+            logger.info(f"{__name__}:_load_or_create_index - Step 2: Creating FAISS index with dimension={len(dummy_embedding)}")
+
+            dimension = len(dummy_embedding)
+            index = faiss.IndexFlatL2(dimension)
+            logger.info(f"{__name__}:_load_or_create_index - Step 2 OK: FAISS IndexFlatL2 created")
+
+            logger.info(f"{__name__}:_load_or_create_index - Step 3: Creating FAISS wrapper (embedding_function type={type(self._embeddings).__name__})")
+            vector_store = FAISS(
+                embedding_function=self._embeddings,
+                index=index,
+                docstore={},
+                index_to_docstore_id={},
+            )
+            logger.info(f"{__name__}:_load_or_create_index - Step 3 OK: FAISS wrapper created")
+
+            logger.info(f"{__name__}:_load_or_create_index - Step 4: Saving index to {FAISS_INDEX_DIR}")
+            vector_store.save_local(str(FAISS_INDEX_DIR), index_name=self._index_name)
+            logger.info(f"{__name__}:_load_or_create_index - Step 4 OK: Index saved")
+
+            return vector_store
+        except Exception as e:
+            logger.error(f"{__name__}:_load_or_create_index - FAILED during index creation: {type(e).__name__}: {e}", exc_info=True)
+            raise
 
     def _filter_results(
         self,
@@ -155,45 +171,59 @@ class FAISSVectorsStore:
         Returns:
             list[VectorSearchResult]: Search results with scores and metadata
         """
+        logger.info(f"{__name__}:similarity_search - START: query_len={len(query)}, k={k}, session_id={session_id}, doc_id={doc_id}")
         try:
             # Fetch more results to account for filtering
             fetch_k = k * 3 if (session_id or doc_id) else k
+            logger.info(f"{__name__}:similarity_search - Step 1: Fetching {fetch_k} results (fetch_k for filtering)")
+
+            logger.info(f"{__name__}:similarity_search - Step 1a: vector_store type={type(self._vector_store).__name__}")
             results = self._vector_store.similarity_search_with_score(
                 query=query,
                 k=fetch_k,
             )
+            logger.info(f"{__name__}:similarity_search - Step 1 OK: Retrieved {len(results)} raw results")
 
             # Apply filtering
+            logger.info(f"{__name__}:similarity_search - Step 2: Applying filters (session_id={session_id}, doc_id={doc_id})")
             filtered_results = self._filter_results(results, session_id, doc_id)
             filtered_results = filtered_results[:k]
+            logger.info(f"{__name__}:similarity_search - Step 2 OK: Filtered to {len(filtered_results)} results (capped at k={k})")
 
+            # Build response
+            logger.info(f"{__name__}:similarity_search - Step 3: Building VectorSearchResult objects")
             search_results = []
-            for doc, score in filtered_results:
-                metadata = doc.metadata or {}
-                search_results.append(
-                    VectorSearchResult(
-                        chunk_id=metadata.get("chunk_id", ""),
-                        content=doc.page_content,
-                        metadata=VectorMetadata(
-                            session_id=metadata.get("session_id", ""),
-                            doc_id=metadata.get("doc_id", ""),
+            for idx, (doc, score) in enumerate(filtered_results):
+                try:
+                    metadata = doc.metadata or {}
+                    logger.debug(f"{__name__}:similarity_search - Processing result {idx}: chunk_id={metadata.get('chunk_id')}, score={score}")
+                    search_results.append(
+                        VectorSearchResult(
                             chunk_id=metadata.get("chunk_id", ""),
-                            page=metadata.get("page"),
-                            section=metadata.get("section"),
-                            source_uri=metadata.get("source_uri", ""),
-                        ),
-                        similarity_score=float(score),
+                            content=doc.page_content,
+                            metadata=VectorMetadata(
+                                session_id=metadata.get("session_id", ""),
+                                doc_id=metadata.get("doc_id", ""),
+                                chunk_id=metadata.get("chunk_id", ""),
+                                page=metadata.get("page"),
+                                section=metadata.get("section"),
+                                source_uri=metadata.get("source_uri", ""),
+                            ),
+                            similarity_score=float(score),
+                        )
                     )
-                )
+                except Exception as e:
+                    logger.error(f"{__name__}:similarity_search - Failed to process result {idx}: {type(e).__name__}: {e}", exc_info=True)
+                    raise
 
             logger.info(
-                f"{__name__}:similarity_search - Found {len(search_results)} results",
+                f"{__name__}:similarity_search - SUCCESS: Built {len(search_results)} results",
                 extra={"session_id": session_id, "k": k},
             )
             return search_results
 
         except Exception as e:
-            logger.error(f"{__name__}:similarity_search - {type(e).__name__}: {e}")
+            logger.error(f"{__name__}:similarity_search - FAILED: {type(e).__name__}: {e}", exc_info=True)
             raise
 
     def max_marginal_relevance_search(

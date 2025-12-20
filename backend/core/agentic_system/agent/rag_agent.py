@@ -28,9 +28,9 @@ from backend.core.agentic_system.agent.rag_agent_schema import RAGResponse
 from backend.core.agentic_system.agent.rag_agent_tool import create_search_tool
 from backend.models.streaming import StreamEvent, StreamEventType, StreamingCitation
 from langchain_google_genai import ChatGoogleGenerativeAI
+from dotenv import load_dotenv
+load_dotenv()
 logger = logging.getLogger(__name__)
-
-
 class RAGAgent:
     """
     RAG Q&A agent with citation support.

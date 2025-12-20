@@ -29,7 +29,7 @@ class DatabaseSettings(BaseSettings):
     port: int = Field(default=5432, description="PostgreSQL port")
     user: str = Field(default="postgres", description="PostgreSQL user")
     password: str = Field(default="postgres", description="PostgreSQL password")
-    db: str = Field(default="studenthelper", description="PostgreSQL database name")
+    db: str = Field(default="legal_search", description="PostgreSQL database name")
 
     pool_size: int = Field(default=10, description="Connection pool size")
     max_overflow: int = Field(default=20, description="Maximum overflow connections")

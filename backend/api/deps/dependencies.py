@@ -72,6 +72,8 @@ def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     """
     Get chat service instance with RAG agent.
 
+    Uses vector store selected via VECTOR_STORE_TYPE env var (FAISS for dev, S3 for prod).
+
     Args:
         db: Async database session (injected via Depends)
 
@@ -80,20 +82,13 @@ def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     """
     # Lazy import to avoid loading heavy dependencies at startup
     from backend.application.services import ChatService
-    from backend.boundary.vdb.s3_vectors_store import S3VectorsStore
+    from backend.boundary.vdb.vector_store_factory import get_vector_store
     from backend.core.agentic_system.agent.rag_agent import RAGAgent
 
-    # Create vector store
-    # S3 Vectors in ap-southeast-2, embeddings in us-east-1 (via NAT Gateway)
-    # ap-southeast-2 has zero quota for Titan Embeddings V2
-    vector_store = S3VectorsStore(
-        vectors_bucket="student-helper-dev-vectors",
-        index_name="documents",
-        region="ap-southeast-2",
-        embedding_region="us-east-1",
-    )
+    # Get vector store based on environment (FAISS for dev, S3 for prod)
+    vector_store = get_vector_store()
 
-    # Create RAG agent
+    # Create RAG agent (vector_store param now optional - will auto-select if None)
     rag_agent = RAGAgent(
         vector_store=vector_store,
         model_id="global.anthropic.claude-haiku-4-5-20251001-v1:0",

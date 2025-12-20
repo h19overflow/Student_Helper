@@ -1,9 +1,10 @@
 """LangGraph node functions for visual knowledge pipeline.
 
-Exports three sequential nodes:
+Exports four sequential nodes:
 1. document_expansion_node: RAG document retrieval
 2. curation_node: LLM concept extraction
 3. image_generation_node: Gemini diagram generation
+4. s3_upload_node: S3 persistence and database storage
 """
 
 from backend.core.agentic_system.visual_knowledge_agent.graph.nodes.curation_node import (
@@ -15,9 +16,13 @@ from backend.core.agentic_system.visual_knowledge_agent.graph.nodes.document_exp
 from backend.core.agentic_system.visual_knowledge_agent.graph.nodes.image_generation_node import (
     image_generation_node,
 )
+from backend.core.agentic_system.visual_knowledge_agent.graph.nodes.s3_upload_node import (
+    s3_upload_node,
+)
 
 __all__ = [
     "document_expansion_node",
     "curation_node",
     "image_generation_node",
+    "s3_upload_node",
 ]

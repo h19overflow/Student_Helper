@@ -37,15 +37,17 @@ class ConceptBranchResponse(BaseModel):
 class VisualKnowledgeResponseModel(BaseModel):
     """Response with visual knowledge diagram and metadata.
 
-    Contains the generated diagram image and extracted concepts.
+    Contains the generated diagram S3 location and extracted concepts.
+    Images are stored in S3 for efficient delivery via presigned URLs.
     """
 
     image_base64: str = Field(
-        description="Base64-encoded PNG diagram image for inline display"
+        description="S3 object key for the diagram image (e.g., sessions/{session_id}/images/{image_id}.png). "
+        "Use this to fetch presigned URLs or construct direct S3 URLs."
     )
     mime_type: str = Field(
         default="image/png",
-        description="MIME type of the image (always image/png)",
+        description="MIME type of the image (image/png or image/jpeg)",
     )
     main_concepts: list[str] = Field(
         description="2-3 core topics extracted from the diagram"

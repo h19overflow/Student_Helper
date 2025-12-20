@@ -1,10 +1,17 @@
 """
 Session API endpoints.
 
-Routes: POST /sessions, GET /sessions, POST /sessions/{id}/chat, POST /sessions/{id}/chat/stream
+Routes:
+- POST /sessions - Create new session
+- GET /sessions - List all sessions
+- DELETE /sessions/{id} - Delete session
+- GET /sessions/{id}/chat/history - Get chat history
+- POST /sessions/{id}/chat - Send chat message
+- POST /sessions/{id}/chat/stream - Stream chat response
+- POST /sessions/{id}/visual-knowledge - Generate visual knowledge diagram (on-demand)
 
 Dependencies: backend.application.session_service, backend.models
-System role: Session HTTP API
+System role: Session HTTP API with visual knowledge diagram generation
 """
 
 import json
@@ -350,33 +357,41 @@ async def generate_visual_knowledge(
     request: VisualKnowledgeRequest,
     visual_knowledge_service: VisualKnowledgeService = Depends(get_visual_knowledge_service),
 ) -> VisualKnowledgeResponseModel:
-    """Generate visual knowledge diagram for an assistant message.
+    """Generate on-demand visual knowledge diagram for an assistant message.
 
-    Creates an interactive concept diagram from an AI response via:
-    1. Document expansion (RAG)
-    2. Concept curation (LLM)
-    3. Diagram generation (Gemini)
+    Creates a detailed, branded concept diagram from an AI response with:
+    1. Document expansion (RAG) - retrieve context from uploaded documents
+    2. Concept curation (LLM) - extract main concepts and explorable branches
+    3. Diagram generation (Gemini) - render high-quality visual with brand styling
+    4. S3 persistence - store in S3 for efficient retrieval and long-term storage
+
+    The diagram features:
+    - Warm academic aesthetic (deep ink text, golden amber accents, warm cream background)
+    - Detail-oriented design with 20+ visual elements for learning retention
+    - Semantic visual hierarchy and connections
+    - Stored persistently in S3 with session+image linking for chat history
 
     Request body:
     - ai_answer: The assistant response text to visualize
 
     Response:
-    - image_base64: Base64-encoded PNG diagram
-    - mime_type: "image/png"
-    - main_concepts: 2-3 core topics
-    - branches: 4-6 explorable concepts (id, label, description)
-    - image_generation_prompt: Prompt sent to Gemini (for transparency)
+    - image_base64: S3 object key for the diagram (e.g., sessions/{session_id}/images/{uuid}.png)
+    - mime_type: Detected image format ("image/png" or "image/jpeg")
+    - main_concepts: 2-3 core topics extracted during curation
+    - branches: 4-6 explorable concepts with id, label, 15-30 word description
+    - image_generation_prompt: Full Gemini prompt (for auditability and regeneration)
 
     Args:
-        session_id: Session ID for context
+        session_id: Session ID to link image to session and chat history
         request: Visual knowledge request with ai_answer
-        visual_knowledge_service: Injected service
+        visual_knowledge_service: Injected service with 4-node LangGraph orchestrator
 
     Returns:
-        VisualKnowledgeResponseModel: Complete diagram with metadata
+        VisualKnowledgeResponseModel: S3 key, MIME type, and extracted metadata
 
     Raises:
-        HTTPException: 400 if input invalid, 500 if generation fails
+        HTTPException(400): Invalid input (empty ai_answer or invalid session_id)
+        HTTPException(500): Generation failed at any pipeline stage (expansion, curation, generation, or S3 upload)
     """
     try:
         result = await visual_knowledge_service.generate(

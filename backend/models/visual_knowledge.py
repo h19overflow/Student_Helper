@@ -19,6 +19,9 @@ class VisualKnowledgeRequest(BaseModel):
         min_length=1,
         description="The assistant response to visualize as a diagram",
     )
+    message_index: int = Field(
+        description="Index of the message in the chat history for sorting",
+    )
 
 
 class ConceptBranchResponse(BaseModel):
@@ -53,6 +56,10 @@ class VisualKnowledgeResponseModel(BaseModel):
     mime_type: str = Field(
         default="image/png",
         description="MIME type of the image (image/png or image/jpeg)",
+    )
+    message_index: int | None = Field(
+        default=None,
+        description="Index of the message in chat history for sorting/linking",
     )
     main_concepts: list[str] = Field(
         description="2-3 core topics extracted from the diagram"

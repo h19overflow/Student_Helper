@@ -69,8 +69,14 @@ async def s3_upload_node(
             if key not in state or not state[key]:
                 raise ValueError(f"Missing required state field: {key}")
 
-        session_id = state["session_id"]
+        session_id_str = state["session_id"]
         image_base64 = state["image_base64"]
+
+        # Convert session_id string to UUID
+        try:
+            session_id = UUID(session_id_str)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid session_id format: {session_id_str}") from e
 
         # Step 1: Upload image to S3
         try:

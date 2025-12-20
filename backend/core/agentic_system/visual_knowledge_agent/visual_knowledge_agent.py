@@ -120,6 +120,7 @@ class VisualKnowledgeAgent:
         self,
         ai_answer: str,
         session_id: str | None = None,
+        message_index: int | None = None,
     ) -> VisualKnowledgeResponse:
         """Generate visual knowledge diagram from AI answer.
 
@@ -132,6 +133,7 @@ class VisualKnowledgeAgent:
         Args:
             ai_answer: The assistant's response to visualize
             session_id: Optional session ID for filtering
+            message_index: Index of the message in chat history for sorting
 
         Returns:
             VisualKnowledgeResponse: Complete diagram with S3 location and metadata
@@ -154,6 +156,7 @@ class VisualKnowledgeAgent:
             initial_state: VisualKnowledgeState = {
                 "ai_answer": ai_answer,
                 "session_id": session_id,
+                "message_index": message_index,
             }
 
             # Run graph (async)

@@ -8,10 +8,13 @@ Dependencies: boto3
 System role: API-level S3 operations for presigned URLs
 """
 
+import logging
 from datetime import datetime, timedelta
 
 import boto3
 from botocore.exceptions import ClientError
+
+logger = logging.getLogger(__name__)
 
 
 class S3DocumentClient:
@@ -79,6 +82,10 @@ class S3DocumentClient:
         Raises:
             ClientError: If presigned URL generation fails
         """
+        logger.debug(
+            f"{__name__}:generate_presigned_download_url - "
+            f"bucket={self._bucket}, key={s3_key}, region={self._region}"
+        )
         presigned_url = self._s3_client.generate_presigned_url(
             ClientMethod="get_object",
             Params={
@@ -88,6 +95,7 @@ class S3DocumentClient:
             ExpiresIn=expires_in,
         )
         expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+        logger.debug(f"{__name__}:generate_presigned_download_url - URL generated: {presigned_url}")
         return presigned_url, expires_at
 
     def file_exists(self, s3_key: str) -> bool:

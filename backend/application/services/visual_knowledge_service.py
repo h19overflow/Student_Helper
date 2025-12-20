@@ -43,6 +43,7 @@ class VisualKnowledgeService:
         self,
         session_id: str,
         ai_answer: str,
+        message_index: int,
     ) -> VisualKnowledgeResponseModel:
         """Generate visual knowledge diagram from AI answer.
 
@@ -55,6 +56,7 @@ class VisualKnowledgeService:
         Args:
             session_id: Session ID for context
             ai_answer: The assistant response to visualize
+            message_index: Index of the message in chat history for sorting
 
         Returns:
             VisualKnowledgeResponseModel: Diagram with metadata
@@ -73,15 +75,18 @@ class VisualKnowledgeService:
             result = await self._agent.ainvoke(
                 ai_answer=ai_answer,
                 session_id=session_id,
+                message_index=message_index,
             )
 
             # Generate presigned URL for S3 key
             # Note: agent returns S3 key in image_base64 field for backward compatibility
             s3_key = result.image_base64
+            logger.debug(f"{__name__}:generate - Generating presigned URL for s3_key={s3_key}")
             presigned_url, expires_at = self._s3_client.generate_presigned_download_url(
                 s3_key=s3_key,
                 expires_in=3600,
             )
+            logger.debug(f"{__name__}:generate - Presigned URL: {presigned_url[:100]}...")
 
             logger.info(
                 f"{__name__}:generate - END "
@@ -91,7 +96,8 @@ class VisualKnowledgeService:
             )
 
             # Convert to response model with presigned URL
-            result_dict = result.model_dump()
+            # Remove image_base64 as it's not a field in the response model
+            result_dict = result.model_dump(exclude={"image_base64"})
             result_dict["s3_key"] = s3_key
             result_dict["presigned_url"] = presigned_url
             result_dict["expires_at"] = expires_at.isoformat()

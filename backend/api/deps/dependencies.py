@@ -14,11 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.configs import Settings, get_settings
 from backend.boundary.db import get_async_db
+from backend.boundary.aws.s3_client import S3DocumentClient
 from backend.application.services import (
     DiagramService,
     DocumentService,
     JobService,
     SessionService,
+)
+from backend.application.services.visual_knowledge_service import (
+    VisualKnowledgeService,
 )
 
 
@@ -116,8 +120,9 @@ def get_s3_document_client():
 
 
 def get_visual_knowledge_service(
-    s3_client=Depends(get_s3_document_client),
-):
+    db: AsyncSession = Depends(get_async_db),
+    s3_client: S3DocumentClient = Depends(get_s3_document_client),
+) -> VisualKnowledgeService:
     """
     Get visual knowledge service instance.
 
@@ -125,6 +130,7 @@ def get_visual_knowledge_service(
     Initializes Gemini client, curation agent, and S3 client for presigned URLs.
 
     Args:
+        db: Async database session (injected)
         s3_client: S3DocumentClient for presigned URL generation (injected)
 
     Returns:
@@ -132,9 +138,6 @@ def get_visual_knowledge_service(
     """
     import os
 
-    from backend.application.services.visual_knowledge_service import (
-        VisualKnowledgeService,
-    )
     from backend.boundary.vdb.vector_store_factory import get_vector_store
     from backend.core.agentic_system.visual_knowledge_agent.visual_knowledge_agent import (
         VisualKnowledgeAgent,
@@ -149,6 +152,7 @@ def get_visual_knowledge_service(
     agent = VisualKnowledgeAgent(
         google_api_key=google_api_key,
         vector_store=vector_store,
+        db_session=db,
         model_id="gemini-3-flash-preview",
         temperature=0.0,
     )

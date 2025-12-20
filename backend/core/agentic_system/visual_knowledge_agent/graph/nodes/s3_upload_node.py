@@ -99,13 +99,20 @@ async def s3_upload_node(
                 f"{__name__}:s3_upload_node - Persisting image metadata "
                 f"to database"
             )
+
+            # Serialize Pydantic ConceptBranch objects to dicts
+            branches_serialized = [
+                branch.model_dump() if hasattr(branch, "model_dump") else branch
+                for branch in state["branches"]
+            ]
+
             image_record = await image_crud.create_from_generation(
                 db_session,
                 session_id=session_id,
                 s3_key=s3_key,
                 mime_type=detected_mime_type,
                 main_concepts=state["main_concepts"],
-                branches=state["branches"],
+                branches=branches_serialized,
                 image_generation_prompt=state["image_generation_prompt"],
                 message_index=state.get("message_index"),
             )

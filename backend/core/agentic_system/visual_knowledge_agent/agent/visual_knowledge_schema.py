@@ -75,6 +75,7 @@ class VisualKnowledgeState(TypedDict, total=False):
     # Pipeline inputs
     ai_answer: str
     session_id: str | None
+    message_index: int | None
 
     # Document expansion output
     expanded_docs: list[VectorSearchResult]
@@ -87,6 +88,10 @@ class VisualKnowledgeState(TypedDict, total=False):
     # Image generation output
     image_base64: str
     mime_type: str
+
+    # S3 persistence output
+    s3_key: str
+    image_id: str
 
     # Error tracking
     error: str | None

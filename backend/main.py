@@ -15,11 +15,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.configs import get_settings
 from backend.api import api_router
 from backend.api.routers import (
+    chat_router,
     chat_stream_router,
     documents_router,
     health_router,
     jobs_router,
     sessions_router,
+    visual_knowledge_router,
 )
 from backend.observability.logger import configure_logging
 from backend.observability.middleware import (
@@ -127,10 +129,12 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix="/api/v1")
 
     # Register individual routers
+    app.include_router(chat_router, prefix="/api/v1")
     app.include_router(chat_stream_router)
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(jobs_router, prefix="/api/v1")
     app.include_router(sessions_router, prefix="/api/v1")
+    app.include_router(visual_knowledge_router, prefix="/api/v1")
     app.include_router(documents_router, prefix="/api/v1")
 
     return app

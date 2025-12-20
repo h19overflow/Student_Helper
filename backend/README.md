@@ -9,9 +9,9 @@
 
 The Student Helper backend is a **layered FastAPI application** implementing RAG (Retrieval-Augmented Generation) with:
 
-- **HTTP API Layer** - RESTful endpoints with FastAPI
+- **HTTP API Layer** - RESTful endpoints with FastAPI (7 dedicated routers)
 - **Business Logic** - Service orchestration for complex operations
-- **Domain Layer** - Pure business logic (RAG agent, pipelines)
+- **Domain Layer** - Pure business logic (RAG agent, agentic systems, pipelines)
 - **Boundary Layer** - Database and vector store abstractions
 - **Observability** - Distributed tracing, structured logging, correlation tracking
 
@@ -26,7 +26,7 @@ graph TB
     end
 
     subgraph HTTP["HTTP API Layer (api/)"]
-        Routes["5 Routers<br/>Sessions, Documents, Jobs, Diagrams, Health"]
+        Routes["7 Routers<br/>Chat, ChatStream, Sessions, Documents, Jobs,<br/>Visual Knowledge, Health"]
         Schemas["Pydantic DTOs<br/>Request/Response Schemas"]
     end
 
@@ -102,7 +102,7 @@ graph TB
 User Query
   ↓
 POST /api/v1/sessions/{id}/chat
-  ├─ Route: sessions_router.chat()
+  ├─ Route: chat_router.chat()
   ├─ Validate: ChatRequest schema
   ├─ Inject: ChatService via Depends()
   │   ├─ Validate session exists (session_crud.get_by_id)
@@ -217,23 +217,59 @@ FAISS Index (.faiss_index/)
     └── similarity_score (Float: 0.0-1.0)
 ```
 
+### Images Table (Visual Knowledge Diagrams)
+```
+images
+├── id (UUID, PK)
+├── session_id (UUID, FK - cascade delete)
+├── s3_key (String - S3 object location)
+├── mime_type (String - image/png or image/jpeg)
+├── message_index (Int, nullable - links to chat message)
+├── main_concepts (JSON - array of 2-3 concept strings)
+├── branches (JSON - array of concept branch objects)
+│   └── each branch: {id, label, description}
+├── image_generation_prompt (String - full Gemini prompt)
+├── created_at (DateTime)
+└── updated_at (DateTime)
+```
+
 ---
 
-## 🔌 API Endpoints
+## 🔌 API Routers & Endpoints
+
+### Router Organization
+
+The API layer is organized into **7 dedicated routers**, each with a single responsibility:
+
+| Router | Module | Responsibilities |
+|--------|--------|------------------|
+| **Chat** | `routers/chat.py` | Send messages, stream responses |
+| **ChatStream** | `routers/chat_stream.py` | WebSocket streaming (legacy) |
+| **Sessions** | `routers/sessions.py` | Session CRUD, chat history retrieval |
+| **Documents** | `routers/documents.py` | Upload, list, manage documents |
+| **Jobs** | `routers/jobs.py` | Poll async job status |
+| **Visual Knowledge** | `routers/visual_knowledge.py` | Generate interactive concept diagrams |
+| **Health** | `routers/health.py` | Health checks for app, DB, vector store |
+
+### Endpoints
 
 **All routes prefixed with `/api/v1`**
 
-| Method | Endpoint | Purpose | Status |
-|--------|----------|---------|--------|
-| POST | `/sessions` | Create session | Scaffold |
-| POST | `/sessions/{id}/chat` | Chat with RAG | ✅ Implemented |
-| GET | `/sessions/{id}/docs` | List documents | ✅ Implemented |
-| POST | `/sessions/{id}/docs` | Upload documents (async) | ✅ Implemented |
-| POST | `/sessions/{id}/diagram` | Generate diagram | Scaffold |
-| GET | `/jobs/{id}` | Poll job status | ✅ Implemented |
-| GET | `/health` | Health check | Scaffold |
-| GET | `/health/db` | Database health | Scaffold |
-| GET | `/health/vector-store` | Vector store health | Scaffold |
+| Method | Endpoint | Router | Purpose | Status |
+|--------|----------|--------|---------|--------|
+| POST | `/sessions` | sessions | Create session | ✅ Implemented |
+| GET | `/sessions` | sessions | List sessions | ✅ Implemented |
+| DELETE | `/sessions/{id}` | sessions | Delete session | ✅ Implemented |
+| GET | `/sessions/{id}/chat/history` | sessions | Get chat history | ✅ Implemented |
+| POST | `/sessions/{id}/chat` | chat | Send chat message with RAG | ✅ Implemented |
+| POST | `/sessions/{id}/chat/stream` | chat | Stream chat response (SSE) | ✅ Implemented |
+| POST | `/sessions/{id}/visual-knowledge` | visual_knowledge | Generate visual diagram | ✅ Implemented |
+| GET | `/sessions/{id}/docs` | documents | List documents | ✅ Implemented |
+| POST | `/sessions/{id}/docs` | documents | Upload documents (async) | ✅ Implemented |
+| GET | `/jobs/{id}` | jobs | Poll job status | ✅ Implemented |
+| GET | `/health` | health | Application health | Scaffold |
+| GET | `/health/db` | health | Database health | Scaffold |
+| GET | `/health/vector-store` | health | Vector store health | Scaffold |
 
 ---
 
@@ -596,4 +632,4 @@ CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0"]
 ---
 
 *Generated documentation for Student Helper RAG application*
-**Last Updated:** 2025-12-15
+**Last Updated:** 2025-12-20

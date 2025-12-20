@@ -2,14 +2,18 @@
 
 Calls Google Gemini to generate diagram images based on curation prompt.
 
-Dependencies: logging, base64, google.genai, schema
+Dependencies: logging, asyncio, base64, google.genai, schema
 System role: Third stage of LangGraph pipeline
 """
 
+import asyncio
 import base64
 import logging
 from typing import TYPE_CHECKING
 
+from backend.core.agentic_system.visual_knowledge_agent.agent.image_generation_prompt import (
+    get_image_generation_system_prompt,
+)
 from backend.core.agentic_system.visual_knowledge_agent.agent.visual_knowledge_schema import (
     VisualKnowledgeState,
 )
@@ -20,7 +24,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def image_generation_node(
+async def image_generation_node(
     state: VisualKnowledgeState,
     google_client: "genai.Client",
 ) -> dict:
@@ -52,12 +56,18 @@ def image_generation_node(
             )
             raise
 
-        # Step 2: Call Gemini image generation
+        # Step 2: Call Gemini image generation with brand system prompt
         try:
             logger.debug(f"{__name__}:image_generation_node - Calling Gemini API")
-            response = google_client.models.generate_content(
+            system_prompt = get_image_generation_system_prompt()
+
+            # Prepend system prompt to user prompt for better output quality
+            full_prompt = f"{system_prompt}\n\nUSER REQUEST:\n{prompt}"
+
+            response = await asyncio.to_thread(
+                google_client.models.generate_content,
                 model="gemini-3-pro-image-preview",
-                contents=prompt,
+                contents=full_prompt,
             )
             logger.info(f"{__name__}:image_generation_node - Gemini API called successfully")
         except Exception as e:

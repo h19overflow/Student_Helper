@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def curation_node(
+async def curation_node(
     state: VisualKnowledgeState,
     curation_agent: "RAGAgent",
 ) -> dict:
@@ -79,7 +79,7 @@ def curation_node(
         # Step 3: Invoke curation agent with structured output
         try:
             logger.debug(f"{__name__}:curation_node - Invoking curation agent")
-            result = curation_agent.invoke({"messages": messages})
+            result = await curation_agent.ainvoke({"messages": messages})
             logger.info(f"{__name__}:curation_node - Agent invoked successfully")
         except Exception as e:
             logger.error(

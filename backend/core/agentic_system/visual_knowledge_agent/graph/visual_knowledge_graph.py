@@ -65,11 +65,11 @@ def create_visual_knowledge_graph(
         async def expansion_wrapper(state):
             return await document_expansion_node(state, vector_store)
 
-        def curation_wrapper(state):
-            return curation_node(state, curation_agent)
+        async def curation_wrapper(state):
+            return await curation_node(state, curation_agent)
 
-        def generation_wrapper(state):
-            return image_generation_node(state, google_client)
+        async def generation_wrapper(state):
+            return await image_generation_node(state, google_client)
 
         # Add nodes
         logger.debug(

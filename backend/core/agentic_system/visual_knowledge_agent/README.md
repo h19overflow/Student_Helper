@@ -8,17 +8,18 @@ A sophisticated pipeline that transforms educational AI responses into interacti
 
 ## 🎯 Overview
 
-The Visual Knowledge Agent generates interactive concept diagrams from AI responses through a three-stage pipeline orchestrated by LangGraph:
+The Visual Knowledge Agent generates interactive concept diagrams from AI responses through a four-stage pipeline orchestrated by LangGraph:
 
 ```
-AI Answer → Document Expansion (RAG) → Concept Curation (LLM) → Image Generation (Gemini) → Interactive Diagram
+AI Answer → Document Expansion (RAG) → Concept Curation (LLM) → Image Generation (Gemini) → S3 Upload & Persistence → Interactive Diagram
 ```
 
 **Key Capabilities:**
 - 📈 Expands single AI answer into ~25 related documents via parallel RAG queries
 - 🧠 Extracts 2-3 main concepts and 4-6 explorable branches using LLM
 - 🎨 Generates high-quality diagrams via Google Gemini API
-- 🔗 Returns base64-encoded images with structured metadata
+- 💾 Uploads images to S3 and persists metadata to database
+- 🔗 Returns S3 key with structured metadata for efficient storage and retrieval
 - ⚡ Async/parallel operations for performance
 - 📋 Full error handling and observability
 
@@ -30,13 +31,25 @@ AI Answer → Document Expansion (RAG) → Concept Curation (LLM) → Image Gene
 
 ```
 backend/core/agentic_system/visual_knowledge_agent/
-├── __init__.py                        # Public exports
-├── visual_knowledge_schema.py          # Data models & state schema
-├── visual_knowledge_prompt.py          # Curation prompt template
-├── document_expander.py                # RAG document expansion
-├── graph_nodes.py                      # LangGraph node functions
-├── visual_knowledge_graph.py           # Graph orchestration
-└── visual_knowledge_agent.py           # Main agent wrapper
+├── agent/
+│   ├── __init__.py
+│   ├── visual_knowledge_schema.py          # Data models & state schema
+│   └── visual_knowledge_prompt.py          # Curation prompt template
+├── graph/
+│   ├── __init__.py
+│   ├── nodes/
+│   │   ├── __init__.py
+│   │   ├── document_expansion_node.py      # RAG document expansion
+│   │   ├── curation_node.py                # LLM concept curation
+│   │   ├── image_generation_node.py        # Gemini image generation
+│   │   └── s3_upload_node.py               # S3 persistence node
+│   └── visual_knowledge_graph.py           # Graph orchestration
+├── utilities/
+│   ├── __init__.py
+│   ├── document_expander.py                # RAG document expansion logic
+│   └── s3_uploader.py                      # S3 image upload utility
+├── __init__.py                             # Public exports
+└── visual_knowledge_agent.py               # Main agent wrapper
 ```
 
 ### Dependency Hierarchy
@@ -47,23 +60,38 @@ graph TD
     A --> B["visual_knowledge_graph.py<br/>(Graph Builder)"]
     A --> C["visual_knowledge_schema.py<br/>(State & Responses)"]
 
-    B --> D["graph_nodes.py<br/>(Node Functions)"]
-    D --> E["document_expander.py<br/>(RAG Expansion)"]
-    D --> F["visual_knowledge_prompt.py<br/>(LLM Prompt)"]
+    B --> D1["document_expansion_node"]
+    B --> D2["curation_node"]
+    B --> D3["image_generation_node"]
+    B --> D4["s3_upload_node"]
 
-    E --> G["Vector Store<br/>(S3/FAISS)"]
-    F --> H["Google Gemini<br/>(LLM Agent)"]
-    D --> I["Google Gemini API<br/>(Image Generation)"]
+    D1 --> E["document_expander.py<br/>(RAG Expansion)"]
+    D2 --> F["visual_knowledge_prompt.py<br/>(LLM Prompt)"]
+    D3 --> G["Google Gemini API<br/>(Image Gen)"]
+    D4 --> H["s3_uploader.py<br/>(S3 Upload)"]
+    D4 --> I["image_crud.py<br/>(DB Persist)"]
+
+    E --> J["Vector Store<br/>(S3/FAISS)"]
+    F --> K["Google Gemini<br/>(LLM Agent)"]
+    H --> L["AWS S3<br/>(Image Storage)"]
+    I --> M["ImageModel<br/>(DB Schema)"]
 
     style A fill:#ff6b6b,color:#fff,stroke:#c92a2a,stroke-width:2px
     style B fill:#fd7e14,color:#fff,stroke:#d9480f,stroke-width:2px
     style C fill:#fd7e14,color:#fff,stroke:#d9480f,stroke-width:2px
-    style D fill:#20c997,color:#fff,stroke:#0b7285,stroke-width:2px
+    style D1 fill:#20c997,color:#fff,stroke:#0b7285,stroke-width:2px
+    style D2 fill:#20c997,color:#fff,stroke:#0b7285,stroke-width:2px
+    style D3 fill:#20c997,color:#fff,stroke:#0b7285,stroke-width:2px
+    style D4 fill:#20c997,color:#fff,stroke:#0b7285,stroke-width:2px
     style E fill:#51cf66,color:#000,stroke:#2f9e44,stroke-width:2px
     style F fill:#51cf66,color:#000,stroke:#2f9e44,stroke-width:2px
-    style G fill:#94d82d,color:#000,stroke:#5c940d,stroke-width:2px
-    style H fill:#94d82d,color:#000,stroke:#5c940d,stroke-width:2px
-    style I fill:#94d82d,color:#000,stroke:#5c940d,stroke-width:2px
+    style G fill:#51cf66,color:#000,stroke:#2f9e44,stroke-width:2px
+    style H fill:#51cf66,color:#000,stroke:#2f9e44,stroke-width:2px
+    style I fill:#51cf66,color:#000,stroke:#2f9e44,stroke-width:2px
+    style J fill:#94d82d,color:#000,stroke:#5c940d,stroke-width:2px
+    style K fill:#94d82d,color:#000,stroke:#5c940d,stroke-width:2px
+    style L fill:#94d82d,color:#000,stroke:#5c940d,stroke-width:2px
+    style M fill:#94d82d,color:#000,stroke:#5c940d,stroke-width:2px
 ```
 
 ---
@@ -298,6 +326,36 @@ def image_generation_node(
 - `mime_type`: str (always "image/png")
 - On error: returns `{"error": str}`
 
+#### Node 4: S3 Upload & Persistence
+
+```python
+async def s3_upload_node(
+    state: VisualKnowledgeState,
+    s3_uploader: S3ImageUploader,
+    db_session: AsyncSession,
+) -> dict:
+    """
+    Upload image to S3 and persist metadata to database.
+
+    Input:  state[\"image_base64\"], state[\"mime_type\"], curation data
+    Output: state[\"s3_key\"], state[\"image_id\"], removes state[\"image_base64\"]
+    """
+```
+
+**Input Contract:**
+- `state["image_base64"]`: str (base64-encoded image from previous node)
+- `state["mime_type"]`: str (image MIME type)
+- `state["main_concepts"]`, `state["branches"]`, `state["image_generation_prompt"]`: Curation metadata
+- S3ImageUploader service for image persistence
+- AsyncSession for database operations
+
+**Output Contract:**
+- `s3_key`: str (S3 object location, e.g., "sessions/{session_id}/images/{image_id}.png")
+- `image_id`: str (UUID of persisted database record)
+- `image_base64`: None (cleared from state for memory efficiency)
+- `mime_type`: str (detected MIME type)
+- On error: returns `{"error": str}`
+
 #### Node Execution Model
 
 ```mermaid
@@ -325,7 +383,7 @@ graph TD
 
 ### File: [visual_knowledge_graph.py](visual_knowledge_graph.py)
 
-Builds and compiles the LangGraph that orchestrates the three nodes.
+Builds and compiles the LangGraph that orchestrates the four nodes.
 
 #### Graph Builder
 
@@ -334,6 +392,8 @@ def create_visual_knowledge_graph(
     vector_store: BaseVectorsStore,
     curation_agent: RAGAgent,
     google_client: genai.Client,
+    s3_uploader: S3ImageUploader,
+    db_session: AsyncSession,
 ) -> CompiledGraph:
     """
     Creates LangGraph for visual knowledge pipeline.
@@ -345,7 +405,9 @@ def create_visual_knowledge_graph(
               ↓
         curation → image_generation
               ↓
-        image_generation → END
+        image_generation → s3_upload
+              ↓
+        s3_upload → END
     """
 ```
 
@@ -360,13 +422,16 @@ graph LR
 
     C -->|"main_concepts<br/>branches<br/>image_prompt"| D["image_generation<br/>(sync node)"]
 
-    D -->|"image_base64<br/>mime_type"| E["END:<br/>Complete State"]
+    D -->|"image_base64<br/>mime_type"| E["s3_upload<br/>(async node)"]
+
+    E -->|"s3_key<br/>image_id"| F["END:<br/>Complete State"]
 
     style A fill:#74c0fc,color:#000,stroke:#1971c2,stroke-width:2px
     style B fill:#4dabf7,color:#fff,stroke:#1864ab,stroke-width:2px
     style C fill:#4dabf7,color:#fff,stroke:#1864ab,stroke-width:2px
     style D fill:#4dabf7,color:#fff,stroke:#1864ab,stroke-width:2px
-    style E fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
+    style E fill:#4dabf7,color:#fff,stroke:#1864ab,stroke-width:2px
+    style F fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
 ```
 
 #### Dependency Injection Pattern
@@ -386,7 +451,160 @@ graph.add_node(
     "image_generation",
     lambda state: image_generation_node(state, google_client),  # Inject client
 )
+graph.add_node(
+    "s3_upload",
+    lambda state: s3_upload_node(state, s3_uploader, db_session),  # Inject uploader & session
+)
 ```
+
+---
+
+## 📦 Layer 5.5: S3 Image Upload Utility
+
+### File: [utilities/s3_uploader.py](utilities/s3_uploader.py)
+
+Handles base64 image encoding, MIME type detection, and S3 persistence with proper metadata.
+
+#### Class Definition
+
+```python
+class S3ImageUploader:
+    """Uploads generated images to S3 bucket with metadata."""
+
+    def __init__(self, s3_client: boto3.client, bucket_name: str) -> None:
+        """Initialize with boto3 S3 client and bucket name."""
+
+    async def upload_image(
+        self,
+        image_base64: str,
+        session_id: UUID,
+    ) -> tuple[str, str]:
+        """
+        Upload base64 image to S3 with automatic MIME type detection.
+
+        Returns:
+            Tuple of (s3_key, mime_type)
+        """
+```
+
+#### Key Features
+
+- **MIME Type Detection**: Analyzes magic bytes in base64 data to detect PNG, JPEG, GIF, WebP
+- **Async Upload**: Uses `asyncio.to_thread()` to wrap sync boto3 calls
+- **S3 Key Structure**: `sessions/{session_id}/images/{image_id}.{extension}`
+- **Metadata Storage**: Stores session_id and image_id in S3 object metadata
+- **Error Handling**: Validates inputs and raises ValueError on invalid data
+
+#### Upload Contract
+
+**Input:**
+- `image_base64`: str (base64-encoded image from previous node)
+- `session_id`: UUID (for S3 path structure)
+
+**Output:**
+- `s3_key`: str (S3 object key for retrieval)
+- `mime_type`: str (detected MIME type for correct rendering)
+
+**Raises:**
+- `ValueError`: If image_base64 is empty or session_id missing
+- `Exception`: If S3 upload fails
+
+---
+
+## 📊 Layer 5.75: Database Models & CRUD
+
+### File: [backend/boundary/db/models/image_model.py](../../../boundary/db/models/image_model.py)
+
+SQLAlchemy ORM model for persisting image metadata and curation data.
+
+#### Model Definition
+
+```python
+class ImageModel(Base, UUIDMixin, TimestampMixin):
+    """
+    ORM model for visual knowledge diagram images.
+
+    Attributes:
+        id: UUID primary key
+        session_id: Foreign key to SessionModel (CASCADE delete)
+        s3_key: S3 object location
+        mime_type: Image MIME type
+        message_index: Optional chat message position
+        main_concepts: JSON array of concept strings
+        branches: JSON array of branch objects
+        image_generation_prompt: Full Gemini prompt for audit
+    """
+```
+
+#### Database Schema
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key |
+| `session_id` | UUID | Foreign key to sessions (CASCADE) |
+| `s3_key` | String(1024) | S3 object location |
+| `mime_type` | String(50) | Image MIME type (default: image/png) |
+| `message_index` | Integer | Optional chat message position (0-indexed) |
+| `main_concepts` | JSON | Array of 2-3 concept strings |
+| `branches` | JSON | Array of branch objects with id, label, description |
+| `image_generation_prompt` | String(4096) | Full Gemini prompt for regeneration |
+| `created_at` | DateTime | Image generation timestamp (UTC) |
+| `updated_at` | DateTime | Last modification timestamp (UTC) |
+
+### File: [backend/boundary/db/CRUD/image_crud.py](../../../boundary/db/CRUD/image_crud.py)
+
+CRUD operations for ImageModel with session filtering and message linking.
+
+#### CRUD Interface
+
+```python
+class ImageCRUD(BaseCRUD[ImageModel]):
+    """CRUD operations for ImageModel."""
+
+    async def get_by_session_id(
+        self,
+        session: AsyncSession,
+        session_id: UUID,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> Sequence[ImageModel]:
+        """Retrieve images for session (newest first)."""
+
+    async def get_by_message_index(
+        self,
+        session: AsyncSession,
+        session_id: UUID,
+        message_index: int,
+    ) -> ImageModel | None:
+        """Retrieve image linked to specific chat message."""
+
+    async def get_latest_for_session(
+        self,
+        session: AsyncSession,
+        session_id: UUID,
+    ) -> ImageModel | None:
+        """Retrieve most recently created image for session."""
+
+    async def create_from_generation(
+        self,
+        session: AsyncSession,
+        session_id: UUID,
+        s3_key: str,
+        mime_type: str,
+        main_concepts: list[str],
+        branches: list[dict],
+        image_generation_prompt: str,
+        message_index: int | None = None,
+    ) -> ImageModel:
+        """Create image record from generation output."""
+```
+
+#### Key Methods
+
+- **get_by_session_id**: Retrieve all images for a session, ordered by creation (newest first)
+- **get_by_message_index**: Link images to specific chat messages for retrieval
+- **get_latest_for_session**: Quick access to most recent diagram
+- **create_from_generation**: Specialized factory method to persist complete generation data
 
 ---
 
@@ -594,12 +812,16 @@ graph LR
     L -->|"google_client.generate_content"| M["Google Gemini<br/>Image Gen"]
     M -->|"PNG bytes"| N["Updated State"]
 
-    N -->|"VisualKnowledgeResponse"| O["Agent"]
-    O -->|"VisualKnowledgeResponseModel"| P["Service"]
-    P -->|"JSON Response"| Q["API Endpoint"]
+    N -->|"Node 4"| O["s3_upload_node"]
+    O -->|"upload_image + persist"| P["S3 + Database"]
+    P -->|"s3_key, image_id"| Q["Updated State"]
 
-    Q -->|"200 OK<br/>{image_base64, ...}"| R["Frontend"]
-    R -->|"Display inline<br/>Show branches"| S["User sees diagram"]
+    Q -->|"VisualKnowledgeResponse"| R["Agent"]
+    R -->|"VisualKnowledgeResponseModel"| S["Service"]
+    S -->|"JSON Response"| T["API Endpoint"]
+
+    T -->|"200 OK<br/>{s3_key, image_id, ...}"| U["Frontend"]
+    U -->|"Fetch from S3<br/>Show branches"| V["User sees diagram"]
 
     style A fill:#a8e6cf,color:#000,stroke:#2f5233,stroke-width:2px
     style B fill:#74c0fc,color:#000,stroke:#1971c2,stroke-width:2px
@@ -615,11 +837,14 @@ graph LR
     style L fill:#339af0,color:#fff,stroke:#1155cc,stroke-width:2px
     style M fill:#339af0,color:#fff,stroke:#1155cc,stroke-width:2px
     style N fill:#339af0,color:#fff,stroke:#1155cc,stroke-width:2px
-    style O fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
-    style P fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
-    style Q fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
+    style O fill:#339af0,color:#fff,stroke:#1155cc,stroke-width:2px
+    style P fill:#94d82d,color:#000,stroke:#5c940d,stroke-width:2px
+    style Q fill:#339af0,color:#fff,stroke:#1155cc,stroke-width:2px
     style R fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
-    style S fill:#2f5233,color:#fff,stroke:#0b2618,stroke-width:2px
+    style S fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
+    style T fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
+    style U fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
+    style V fill:#2f5233,color:#fff,stroke:#0b2618,stroke-width:2px
 ```
 
 ---
@@ -630,19 +855,36 @@ graph LR
 
 ```python
 # backend/api/deps/dependencies.py
-def get_visual_knowledge_service():
+def get_visual_knowledge_service(db_session: AsyncSession = Depends(get_db_session)):
     """Factory function for dependency injection."""
     import os
+    import boto3
     from backend.core.agentic_system.visual_knowledge_agent import VisualKnowledgeAgent
+    from backend.core.agentic_system.visual_knowledge_agent.utilities.s3_uploader import S3ImageUploader
     from backend.application.services.visual_knowledge_service import VisualKnowledgeService
     from backend.boundary.vdb.vector_store_factory import get_vector_store
 
     google_api_key = os.getenv("GOOGLE_API_KEY")
+    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    s3_bucket = os.getenv("S3_BUCKET_NAME", "student-helper-diagrams")
+
     vector_store = get_vector_store()
+
+    # Initialize S3 client and uploader
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=aws_access_key,
+        aws_secret_access_key=aws_secret_key,
+        region_name=os.getenv("AWS_REGION", "us-east-1"),
+    )
+    s3_uploader = S3ImageUploader(s3_client, s3_bucket)
 
     agent = VisualKnowledgeAgent(
         google_api_key=google_api_key,
         vector_store=vector_store,
+        s3_uploader=s3_uploader,
+        db_session=db_session,
         model_id="gemini-3-flash-preview",
         temperature=0.0,
     )
@@ -662,7 +904,8 @@ curl -X POST http://localhost:8000/sessions/sess-123/visual-knowledge \
 
 # Response (200 OK)
 {
-  "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAUA...",
+  "s3_key": "sessions/550e8400-e29b-41d4-a716-446655440000/images/7d8c5f2a-1b3e-4f9d-8a5b-2c1e9d7f4a6b.png",
+  "image_id": "7d8c5f2a-1b3e-4f9d-8a5b-2c1e9d7f4a6b",
   "mime_type": "image/png",
   "main_concepts": [
     "Machine Learning",
@@ -705,7 +948,10 @@ stateDiagram-v2
     Curated --> Generated: Image Generation
     Generated: image_base64, mime_type
 
-    Generated --> [*]: VisualKnowledgeResponse
+    Generated --> Persisted: S3 Upload & DB Persist
+    Persisted: s3_key, image_id
+
+    Persisted --> [*]: VisualKnowledgeResponse
 
     note right of Initial
         Input from user request
@@ -723,10 +969,15 @@ stateDiagram-v2
         Gemini diagram creation
     end note
 
+    note right of Persisted
+        S3 upload + database persistence
+    end note
+
     style Initial fill:#74c0fc,color:#000,stroke:#1971c2,stroke-width:2px
     style Expanded fill:#4dabf7,color:#fff,stroke:#1864ab,stroke-width:2px
     style Curated fill:#339af0,color:#fff,stroke:#1155cc,stroke-width:2px
-    style Generated fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
+    style Generated fill:#339af0,color:#fff,stroke:#1155cc,stroke-width:2px
+    style Persisted fill:#1971c2,color:#fff,stroke:#0c4a6e,stroke-width:2px
 ```
 
 ### Error Handling Strategy
@@ -793,13 +1044,18 @@ backend.core.agentic_system.visual_knowledge_agent.graph_nodes:curation_node - R
 - [ ] Document expansion with mock vector store
 - [ ] Curation node with mocked LLM responses
 - [ ] Image generation with mocked Gemini API
+- [ ] S3ImageUploader with mock boto3 client
+- [ ] s3_upload_node with mocked uploader and db session
 - [ ] Graph state transitions
 - [ ] Error handling and logging
+- [ ] MIME type detection from base64 data
 
 **Integration Test Coverage:**
 - [ ] Full pipeline with test data
 - [ ] Service layer integration
 - [ ] API endpoint (mock dependencies)
+- [ ] S3 upload with real boto3 client (optional)
+- [ ] Database persistence with test database
 
 ---
 
@@ -807,13 +1063,19 @@ backend.core.agentic_system.visual_knowledge_agent.graph_nodes:curation_node - R
 
 | File | Purpose | Key Exports |
 |------|---------|-------------|
-| [visual_knowledge_schema.py](visual_knowledge_schema.py) | Data models & TypedDict state | `VisualKnowledgeState`, `CurationResult`, `VisualKnowledgeResponse` |
-| [visual_knowledge_prompt.py](visual_knowledge_prompt.py) | LLM instructions | `VISUAL_KNOWLEDGE_PROMPT`, `get_visual_knowledge_prompt()` |
-| [document_expander.py](document_expander.py) | RAG document expansion | `expand_documents(...)` |
-| [graph_nodes.py](graph_nodes.py) | Stateful node functions | `document_expansion_node`, `curation_node`, `image_generation_node` |
-| [visual_knowledge_graph.py](visual_knowledge_graph.py) | LangGraph builder | `create_visual_knowledge_graph(...)` |
+| [agent/visual_knowledge_schema.py](agent/visual_knowledge_schema.py) | Data models & TypedDict state | `VisualKnowledgeState`, `CurationResult`, `VisualKnowledgeResponse` |
+| [agent/visual_knowledge_prompt.py](agent/visual_knowledge_prompt.py) | LLM instructions | `VISUAL_KNOWLEDGE_PROMPT`, `get_visual_knowledge_prompt()` |
+| [utilities/document_expander.py](utilities/document_expander.py) | RAG document expansion | `expand_documents(...)` |
+| [utilities/s3_uploader.py](utilities/s3_uploader.py) | S3 image upload utility | `S3ImageUploader` |
+| [graph/nodes/document_expansion_node.py](graph/nodes/document_expansion_node.py) | Document expansion node | `document_expansion_node` |
+| [graph/nodes/curation_node.py](graph/nodes/curation_node.py) | Curation node | `curation_node` |
+| [graph/nodes/image_generation_node.py](graph/nodes/image_generation_node.py) | Image generation node | `image_generation_node` |
+| [graph/nodes/s3_upload_node.py](graph/nodes/s3_upload_node.py) | S3 upload & persistence node | `s3_upload_node` |
+| [graph/visual_knowledge_graph.py](graph/visual_knowledge_graph.py) | LangGraph builder | `create_visual_knowledge_graph(...)` |
 | [visual_knowledge_agent.py](visual_knowledge_agent.py) | Main orchestrator | `VisualKnowledgeAgent` |
 | [__init__.py](__init__.py) | Public module interface | All public exports |
+| [backend/boundary/db/models/image_model.py](../../../boundary/db/models/image_model.py) | Image ORM model | `ImageModel` |
+| [backend/boundary/db/CRUD/image_crud.py](../../../boundary/db/CRUD/image_crud.py) | Image CRUD operations | `ImageCRUD`, `image_crud` |
 
 ---
 
@@ -848,9 +1110,14 @@ Part of the Student Helper RAG application. Built with:
 - **LangGraph**: Stateful graph orchestration
 - **LangChain**: Agent framework with structured output
 - **Google Gemini**: LLM and image generation
+- **Google Gemini API**: Image generation
 - **FastAPI**: HTTP API framework
+- **AWS S3**: Image storage
+- **SQLAlchemy**: Database ORM and persistence
+- **Boto3**: AWS S3 integration
 
 ---
 
 **Last Updated:** 2025-12-20
-**Module Version:** 1.0.0
+**Module Version:** 1.1.0
+**Changes:** Added S3 image persistence layer (Layer 5.5), database models (Layer 5.75), and s3_upload_node (Node 4)

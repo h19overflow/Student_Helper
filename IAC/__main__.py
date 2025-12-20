@@ -44,12 +44,54 @@ from IAC.components.edge.cloudfront import CloudFrontComponent
 from IAC.components.edge.api_gateway import ApiGatewayComponent
 
 
+def _deploy_storage_only(config, namer, base_name: str) -> None:
+    """Deploy only S3 buckets for development and testing (presigned URLs, etc).
+
+    Args:
+        config: Configuration object from get_config()
+        namer: ResourceNamer instance
+        base_name: Base name for resources
+    """
+    # --- S3 Buckets Only ---
+    s3_buckets = S3BucketsComponent(
+        name=base_name,
+        environment=config.environment,
+        namer=namer,
+    )
+    s3_outputs = s3_buckets.get_outputs()
+
+    # --- S3-only Exports ---
+    storage_outputs = {
+        "documents_bucket": s3_outputs.documents_bucket_name,
+        "vectors_bucket": s3_outputs.vectors_bucket_name,
+        "vectors_index": s3_outputs.vectors_index_name,
+        "frontend_bucket": s3_outputs.frontend_bucket_name,
+    }
+
+    # Write outputs to .env file for local development
+    write_outputs_to_env(storage_outputs, "infrastructure.env")
+
+    # Export to Pulumi stack
+    for key, value in storage_outputs.items():
+        pulumi.export(key, value)
+
+    pulumi.log.info("✓ S3-only deployment complete")
+
+
 def main() -> None:
     """Deploy Student Helper infrastructure."""
     # Load configuration
     config = get_config()
     namer = ResourceNamer(project="student-helper", environment=config.environment)
     base_name = namer.name("")
+
+    # Check if deploying storage only
+    pulumi_config = pulumi.Config()
+    storage_only = pulumi_config.get_bool("storage_only") or False
+
+    if storage_only:
+        _deploy_storage_only(config, namer, base_name)
+        return
 
     # --- Layer 1: Networking Foundation ---
     vpc = VpcComponent(

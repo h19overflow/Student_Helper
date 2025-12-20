@@ -41,9 +41,14 @@ class VisualKnowledgeResponseModel(BaseModel):
     Images are stored in S3 for efficient delivery via presigned URLs.
     """
 
-    image_base64: str = Field(
-        description="S3 object key for the diagram image (e.g., sessions/{session_id}/images/{image_id}.png). "
-        "Use this to fetch presigned URLs or construct direct S3 URLs."
+    s3_key: str = Field(
+        description="S3 object key for the diagram image (e.g., sessions/{session_id}/images/{image_id}.png)"
+    )
+    presigned_url: str = Field(
+        description="Presigned URL for direct image access (GET). Valid for 1 hour by default."
+    )
+    expires_at: str = Field(
+        description="ISO 8601 timestamp when presigned URL expires"
     )
     mime_type: str = Field(
         default="image/png",
@@ -58,3 +63,12 @@ class VisualKnowledgeResponseModel(BaseModel):
     image_generation_prompt: str = Field(
         description="The prompt sent to Gemini (for transparency/debugging)"
     )
+
+    # Keep image_base64 as alias for backward compatibility if needed
+    class Config:
+        populate_by_name = True
+
+    @property
+    def image_base64(self) -> str:
+        """Backward compatibility property - returns S3 key."""
+        return self.s3_key

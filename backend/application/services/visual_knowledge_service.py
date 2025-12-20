@@ -3,12 +3,13 @@
 Orchestrates visual knowledge generation pipeline.
 Coordinates between API layer and agent layer.
 
-Dependencies: logging, agent, models
+Dependencies: logging, agent, models, S3 client
 System role: Service layer for visual knowledge feature
 """
 
 import logging
 
+from backend.boundary.aws.s3_client import S3DocumentClient
 from backend.core.agentic_system.visual_knowledge_agent.visual_knowledge_agent import (
     VisualKnowledgeAgent,
 )
@@ -21,15 +22,22 @@ class VisualKnowledgeService:
     """Service for generating visual knowledge diagrams.
 
     Handles orchestration between API and agent layers.
+    Generates presigned URLs for efficient S3 image access.
     """
 
-    def __init__(self, visual_knowledge_agent: VisualKnowledgeAgent) -> None:
-        """Initialize service with agent dependency.
+    def __init__(
+        self,
+        visual_knowledge_agent: VisualKnowledgeAgent,
+        s3_client: S3DocumentClient,
+    ) -> None:
+        """Initialize service with dependencies.
 
         Args:
             visual_knowledge_agent: VisualKnowledgeAgent instance
+            s3_client: S3DocumentClient for presigned URL generation
         """
         self._agent = visual_knowledge_agent
+        self._s3_client = s3_client
 
     async def generate(
         self,
@@ -67,15 +75,28 @@ class VisualKnowledgeService:
                 session_id=session_id,
             )
 
+            # Generate presigned URL for S3 key
+            # Note: agent returns S3 key in image_base64 field for backward compatibility
+            s3_key = result.image_base64
+            presigned_url, expires_at = self._s3_client.generate_presigned_download_url(
+                s3_key=s3_key,
+                expires_in=3600,
+            )
+
             logger.info(
                 f"{__name__}:generate - END "
                 f"concepts={len(result.main_concepts)}, "
                 f"branches={len(result.branches)}, "
-                f"image_len={len(result.image_base64)}"
+                f"image_key_len={len(s3_key)}"
             )
 
-            # Convert to response model
-            return VisualKnowledgeResponseModel(**result.model_dump())
+            # Convert to response model with presigned URL
+            result_dict = result.model_dump()
+            result_dict["s3_key"] = s3_key
+            result_dict["presigned_url"] = presigned_url
+            result_dict["expires_at"] = expires_at.isoformat()
+
+            return VisualKnowledgeResponseModel(**result_dict)
 
         except ValueError as e:
             logger.error(f"{__name__}:generate - ValueError: {e}")

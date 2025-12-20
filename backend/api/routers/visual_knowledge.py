@@ -2,8 +2,9 @@
 
 Routes:
 - POST /sessions/{session_id}/visual-knowledge - Generate visual knowledge diagram from AI response
+- GET /sessions/{session_id}/images - Retrieve all images for a session (for session resuming)
 
-Dependencies: backend.application.services.visual_knowledge_service
+Dependencies: backend.application.services.visual_knowledge_service, image_crud, S3 client
 System role: Visual knowledge diagram generation HTTP API
 """
 
@@ -11,10 +12,18 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.deps import get_visual_knowledge_service
+from backend.api.deps import (
+    get_visual_knowledge_service,
+    get_s3_document_client,
+)
 from backend.application.services.visual_knowledge_service import VisualKnowledgeService
+from backend.boundary.aws.s3_client import S3DocumentClient
+from backend.boundary.db import get_async_db
+from backend.boundary.db.CRUD.image_crud import image_crud
 from backend.models.visual_knowledge import (
+    ConceptBranchResponse,
     VisualKnowledgeRequest,
     VisualKnowledgeResponseModel,
 )
@@ -82,4 +91,80 @@ async def generate_visual_knowledge(
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error(f"{__name__}:generate_visual_knowledge - {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get(
+    "/{session_id}/images",
+    response_model=list[VisualKnowledgeResponseModel],
+    status_code=200,
+)
+async def get_session_images(
+    session_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    s3_client: S3DocumentClient = Depends(get_s3_document_client),
+) -> list[VisualKnowledgeResponseModel]:
+    """Retrieve all visual knowledge images for a session.
+
+    Used when resuming a session to load previously generated diagrams.
+    Generates fresh presigned URLs for each image to ensure they're valid.
+
+    Response:
+    - Returns list of all images for the session, newest first
+    - Each image includes presigned URL for direct S3 access
+    - Presigned URLs valid for 1 hour from generation
+
+    Args:
+        session_id: Session UUID to retrieve images for
+        db: Async database session (injected)
+        s3_client: S3 client for presigned URL generation (injected)
+
+    Returns:
+        list[VisualKnowledgeResponseModel]: All images for the session with presigned URLs
+
+    Raises:
+        HTTPException(400): Invalid session_id format
+    """
+    try:
+        session_uuid = UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session ID format")
+
+    try:
+        logger.info(f"{__name__}:get_session_images - START session_id={session_id}")
+
+        # Retrieve all images for this session (newest first)
+        images = await image_crud.get_by_session_id(db, session_uuid)
+
+        logger.info(
+            f"{__name__}:get_session_images - Retrieved {len(images)} images for session"
+        )
+
+        # Convert to response models with fresh presigned URLs
+        responses = []
+        for image in images:
+            presigned_url, expires_at = s3_client.generate_presigned_download_url(
+                s3_key=image.s3_key,
+                expires_in=3600,
+            )
+
+            responses.append(
+                VisualKnowledgeResponseModel(
+                    s3_key=image.s3_key,
+                    presigned_url=presigned_url,
+                    expires_at=expires_at.isoformat(),
+                    mime_type=image.mime_type,
+                    main_concepts=image.main_concepts,
+                    branches=[
+                        ConceptBranchResponse(**branch) for branch in image.branches
+                    ],
+                    image_generation_prompt=image.image_generation_prompt,
+                )
+            )
+
+        logger.info(f"{__name__}:get_session_images - END returning {len(responses)} images")
+        return responses
+
+    except Exception as e:
+        logger.error(f"{__name__}:get_session_images - {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e

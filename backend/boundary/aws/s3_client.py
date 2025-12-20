@@ -61,6 +61,35 @@ class S3DocumentClient:
         expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
         return presigned_url, expires_at
 
+    def generate_presigned_download_url(
+        self,
+        s3_key: str,
+        expires_in: int = 3600,
+    ) -> tuple[str, datetime]:
+        """
+        Generate presigned URL for downloading/viewing an S3 object.
+
+        Args:
+            s3_key: S3 object key (path in bucket)
+            expires_in: URL expiry in seconds (default 1 hour)
+
+        Returns:
+            tuple[str, datetime]: (presigned_url, expires_at)
+
+        Raises:
+            ClientError: If presigned URL generation fails
+        """
+        presigned_url = self._s3_client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={
+                "Bucket": self._bucket,
+                "Key": s3_key,
+            },
+            ExpiresIn=expires_in,
+        )
+        expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+        return presigned_url, expires_at
+
     def file_exists(self, s3_key: str) -> bool:
         """
         Check if a file exists in S3.

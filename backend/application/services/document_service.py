@@ -221,9 +221,10 @@ class DocumentService:
             )
 
         # Query S3 Vectors for all chunks belonging to this document
-        # Use a dummy query since we're filtering by doc_id metadata
+        # Use a minimal dummy query since S3 Vectors requires a non-empty query for embedding
+        # Filtering by doc_id metadata ensures we get chunks only for this document
         search_results = self.vector_store.similarity_search(
-            query="",
+            query=" ",  # Minimal non-empty query (S3 Vectors requires this)
             k=1000,  # Get all chunks for this document
             doc_id=str(doc_id),
         )

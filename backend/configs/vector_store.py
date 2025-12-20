@@ -16,7 +16,7 @@ class VectorStoreSettings(BaseSettings):
     """Vector store configuration (FAISS for dev, S3 Vectors for prod)."""
 
     store_type: str = Field(
-        default="faiss",
+        default="s3",
         description="Vector store type: 'faiss' for local dev, 's3' for production",
     )
     aws_region: str = Field(default="ap-southeast-2", description="AWS region for S3 Vectors")
@@ -24,7 +24,7 @@ class VectorStoreSettings(BaseSettings):
         default="us-east-1",
         description="AWS region for Bedrock embeddings (us-east-1 has higher quota)",
     )
-    index_name: str = Field(default="legal-search-vectors", description="S3 Vectors index name")
+    index_name: str = Field(default="documents", description="S3 Vectors index name")
 
     embedding_model: str = Field(
         default="amazon.titan-embed-text-v2:0",

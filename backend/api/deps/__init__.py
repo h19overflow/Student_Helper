@@ -9,6 +9,7 @@ from .dependencies import (
     get_s3_document_client,
     get_session_service,
     get_settings_dependency,
+    get_visual_knowledge_service,
 )
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "get_s3_document_client",
     "get_session_service",
     "get_settings_dependency",
+    "get_visual_knowledge_service",
 ]

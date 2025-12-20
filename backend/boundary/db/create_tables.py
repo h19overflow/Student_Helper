@@ -18,6 +18,7 @@ from backend.boundary.db.CRUD.chat_history_crud import ChatHistoryCRUD
 from backend.boundary.db.models.session_model import SessionModel  # noqa: F401
 from backend.boundary.db.models.document_model import DocumentModel  # noqa: F401
 from backend.boundary.db.models.job_model import JobModel  # noqa: F401
+from backend.boundary.db.models.image_model import ImageModel  # noqa: F401
 
 
 def create_all_tables() -> None:

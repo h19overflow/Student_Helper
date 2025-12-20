@@ -153,6 +153,51 @@ Frontend polls GET /jobs/{job_id} for status
 
 ---
 
+## 🔄 Request Flow Example: Visual Knowledge Generation
+
+```
+User Types "/visualize"
+  ↓
+POST /api/v1/sessions/{id}/visual-knowledge
+  ├─ Route: visual_knowledge_router.generate_visual_knowledge()
+  ├─ Validate: VisualKnowledgeRequest { aiAnswer: "assistant message content" }
+  ├─ Inject: VisualKnowledgeService via Depends()
+  │   ├─ LangGraph 4-Node Pipeline:
+  │   │   ├─ 1️⃣ Document Expansion: Retrieve RAG context from vector store
+  │   │   ├─ 2️⃣ Concept Curation: LLM extracts main_concepts + branches
+  │   │   ├─ 3️⃣ Image Generation: Gemini creates diagram with branding
+  │   │   └─ 4️⃣ S3 Persistence: Upload image, store metadata in DB
+  │   ├─ Generate presigned download URL (1 hour expiry)
+  │   └─ Return: VisualKnowledgeResponseModel
+  │       ├─ s3_key: S3 object location
+  │       ├─ presigned_url: Direct download URL
+  │       ├─ main_concepts: ["Concept 1", "Concept 2"]
+  │       ├─ branches: [{id, label, description}, ...]
+  │       └─ image_generation_prompt: Full Gemini prompt (audit)
+  ├─ API client converts snake_case → camelCase
+  └─ Frontend: VisualKnowledgeViewer modal displays image + concepts + branches
+  ↓
+200 OK with diagram URL and metadata
+
+Session Resume Flow:
+  GET /api/v1/sessions/{id}/images
+  ├─ Route: visual_knowledge_router.get_session_images()
+  ├─ image_crud.get_by_session_id() - All images for session
+  ├─ Generate fresh presigned URLs for each image
+  └─ Return: list[VisualKnowledgeResponseModel]
+  ↓
+Frontend displays previous diagrams alongside chat history
+```
+
+**Frontend Integration:**
+- **Command Detection**: [ChatInput.tsx:29-34](../study-buddy-ai/src/components/ChatInput.tsx#L29-L34)
+- **Handler**: [ChatInterface.tsx:128-148](../study-buddy-ai/src/components/ChatInterface.tsx#L128-L148)
+- **Hook**: [useSession.ts:416-442](../study-buddy-ai/src/hooks/useSession.ts#L416-L442)
+- **Service**: [visual-knowledge.service.ts:18-26](../study-buddy-ai/src/services/visual-knowledge.service.ts#L18-L26)
+- **Viewer Component**: [VisualKnowledgeViewer.tsx](../study-buddy-ai/src/components/VisualKnowledgeViewer.tsx)
+
+---
+
 ## 🗄️ Data Model
 
 ### Sessions Table
@@ -233,6 +278,12 @@ images
 └── updated_at (DateTime)
 ```
 
+**CRUD Operations:** See [boundary/db/CRUD/image_crud.py](boundary/db/CRUD/image_crud.py)
+- `create()` - Persist new visual knowledge diagram with S3 key and metadata
+- `get_by_session_id()` - Retrieve all images for session (ordered by created_at DESC)
+- `get_by_id()` - Fetch single image by UUID
+- All operations CASCADE DELETE when session is deleted
+
 ---
 
 ## 🔌 API Routers & Endpoints
@@ -263,7 +314,8 @@ The API layer is organized into **7 dedicated routers**, each with a single resp
 | GET | `/sessions/{id}/chat/history` | sessions | Get chat history | ✅ Implemented |
 | POST | `/sessions/{id}/chat` | chat | Send chat message with RAG | ✅ Implemented |
 | POST | `/sessions/{id}/chat/stream` | chat | Stream chat response (SSE) | ✅ Implemented |
-| POST | `/sessions/{id}/visual-knowledge` | visual_knowledge | Generate visual diagram | ✅ Implemented |
+| POST | `/sessions/{id}/visual-knowledge` | visual_knowledge | Generate visual diagram from AI response | ✅ Implemented |
+| GET | `/sessions/{id}/images` | visual_knowledge | Get all images for session (session resume) | ✅ Implemented |
 | GET | `/sessions/{id}/docs` | documents | List documents | ✅ Implemented |
 | POST | `/sessions/{id}/docs` | documents | Upload documents (async) | ✅ Implemented |
 | GET | `/jobs/{id}` | jobs | Poll job status | ✅ Implemented |

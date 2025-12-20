@@ -18,10 +18,12 @@ from fastapi.responses import StreamingResponse
 from backend.application.services.chat_service import ChatService
 from backend.application.services.diagram_service import DiagramService
 from backend.application.services.session_service import SessionService
+from backend.application.services.visual_knowledge_service import VisualKnowledgeService
 from backend.api.deps import (
     get_chat_service,
     get_diagram_service,
     get_session_service,
+    get_visual_knowledge_service,
 )
 from backend.models.chat import (
     ChatHistoryResponse,
@@ -32,6 +34,10 @@ from backend.models.chat import (
 from backend.models.citation import Citation
 from backend.models.session import CreateSessionRequest, SessionResponse
 from backend.models.streaming import StreamEventType
+from backend.models.visual_knowledge import (
+    VisualKnowledgeRequest,
+    VisualKnowledgeResponseModel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -331,3 +337,56 @@ async def chat_stream(
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
+
+
+@router.post(
+    "/{session_id}/visual-knowledge",
+    response_model=VisualKnowledgeResponseModel,
+    status_code=200,
+    tags=["visual-knowledge"],
+)
+async def generate_visual_knowledge(
+    session_id: str,
+    request: VisualKnowledgeRequest,
+    visual_knowledge_service: VisualKnowledgeService = Depends(get_visual_knowledge_service),
+) -> VisualKnowledgeResponseModel:
+    """Generate visual knowledge diagram for an assistant message.
+
+    Creates an interactive concept diagram from an AI response via:
+    1. Document expansion (RAG)
+    2. Concept curation (LLM)
+    3. Diagram generation (Gemini)
+
+    Request body:
+    - ai_answer: The assistant response text to visualize
+
+    Response:
+    - image_base64: Base64-encoded PNG diagram
+    - mime_type: "image/png"
+    - main_concepts: 2-3 core topics
+    - branches: 4-6 explorable concepts (id, label, description)
+    - image_generation_prompt: Prompt sent to Gemini (for transparency)
+
+    Args:
+        session_id: Session ID for context
+        request: Visual knowledge request with ai_answer
+        visual_knowledge_service: Injected service
+
+    Returns:
+        VisualKnowledgeResponseModel: Complete diagram with metadata
+
+    Raises:
+        HTTPException: 400 if input invalid, 500 if generation fails
+    """
+    try:
+        result = await visual_knowledge_service.generate(
+            session_id=session_id,
+            ai_answer=request.ai_answer,
+        )
+        return result
+    except ValueError as e:
+        logger.error(f"{__name__}:generate_visual_knowledge - ValueError: {e}")
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.error(f"{__name__}:generate_visual_knowledge - {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e

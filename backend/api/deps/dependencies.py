@@ -99,6 +99,42 @@ def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     return ChatService(db=db, rag_agent=rag_agent)
 
 
+def get_visual_knowledge_service():
+    """
+    Get visual knowledge service instance.
+
+    Uses vector store selected via VECTOR_STORE_TYPE env var.
+    Initializes Gemini client and curation agent.
+
+    Returns:
+        VisualKnowledgeService: Visual knowledge service with configured agent
+    """
+    import os
+
+    from backend.application.services.visual_knowledge_service import (
+        VisualKnowledgeService,
+    )
+    from backend.boundary.vdb.vector_store_factory import get_vector_store
+    from backend.core.agentic_system.visual_knowledge_agent.visual_knowledge_agent import (
+        VisualKnowledgeAgent,
+    )
+
+    google_api_key = os.getenv("GOOGLE_API_KEY")
+    if not google_api_key:
+        raise ValueError("GOOGLE_API_KEY environment variable is required")
+
+    vector_store = get_vector_store()
+
+    agent = VisualKnowledgeAgent(
+        google_api_key=google_api_key,
+        vector_store=vector_store,
+        model_id="gemini-3-flash-preview",
+        temperature=0.0,
+    )
+
+    return VisualKnowledgeService(visual_knowledge_agent=agent)
+
+
 def get_diagram_service() -> DiagramService:
     """
     Get diagram service instance.

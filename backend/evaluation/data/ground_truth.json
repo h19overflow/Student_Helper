@@ -1,0 +1,383 @@
+{
+  "metadata": {
+    "total_samples": 100,
+    "documents": 5,
+    "samples_per_document": 20,
+    "date_created": "2025-12-20",
+    "notes": "Ground truth dataset for RAG evaluation. 5 PDFs × 20 questions each."
+  },
+  "samples": [
+    {
+      "question": "What is the main architecture of the Student Helper system?",
+      "expected_answer": "The Student Helper system uses a Retrieval-Augmented Generation (RAG) architecture with vector-based semantic search. It combines document retrieval through S3 Vectors with LLM generation using Google Gemini for producing answers with citations.",
+      "expected_chunks": [
+        "arch_001",
+        "arch_002"
+      ],
+      "source_document": "document_1.pdf",
+      "difficulty": "easy",
+      "category": "architecture",
+      "min_citation_accuracy": 0.8,
+      "metadata": {
+        "tags": [
+          "RAG",
+          "architecture",
+          "system-design"
+        ],
+        "keywords": [
+          "S3 Vectors",
+          "semantic search",
+          "Google Gemini"
+        ]
+      }
+    },
+    {
+      "question": "How are documents processed before vectorization?",
+      "expected_answer": "Documents are first uploaded to S3, then parsed into chunks. Chunking is done with semantic awareness, typically using 512-token windows with 10% overlap to preserve context. Chunks are then embedded using Amazon Titan Embeddings v2 which produces 1024-dimensional vectors.",
+      "expected_chunks": [
+        "chunk_001",
+        "chunk_002",
+        "chunk_003"
+      ],
+      "source_document": "document_1.pdf",
+      "difficulty": "medium",
+      "category": "data-pipeline",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "chunking",
+          "embeddings",
+          "preprocessing"
+        ]
+      }
+    },
+    {
+      "question": "What embedding model is used and why?",
+      "expected_answer": "Amazon Titan Embeddings v2 is used because it produces 1024-dimensional vectors optimized for semantic search. It provides strong performance on information retrieval tasks and is available through AWS Bedrock in the us-east-1 region where quota limits are higher.",
+      "expected_chunks": [
+        "embedding_001"
+      ],
+      "source_document": "document_1.pdf",
+      "difficulty": "medium",
+      "category": "embeddings",
+      "min_citation_accuracy": 0.8,
+      "metadata": {
+        "tags": [
+          "embeddings",
+          "Bedrock",
+          "Titan"
+        ]
+      }
+    },
+    {
+      "question": "Explain the cross-region architecture decision.",
+      "expected_answer": "The system uses a cross-region architecture where S3 Vectors bucket is in ap-southeast-2 (closer to users) while Bedrock embeddings are accessed from us-east-1 (higher quota availability). A NAT Gateway enables the private EC2 subnet to reach us-east-1 without exposing instances to the internet. This solves quota exhaustion issues experienced in ap-southeast-2.",
+      "expected_chunks": [
+        "arch_003",
+        "arch_004"
+      ],
+      "source_document": "document_2.pdf",
+      "difficulty": "hard",
+      "category": "architecture",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "cross-region",
+          "NAT",
+          "networking"
+        ]
+      }
+    },
+    {
+      "question": "What is the vector index configuration?",
+      "expected_answer": "The S3 Vectors index is configured with 1024 dimensions matching Titan v2 embeddings, uses cosine distance metric for similarity search, and stores float32 precision. Non-filterable metadata includes raw text content while chunk metadata (document_id, session_id, page_number) is filterable for precise retrieval.",
+      "expected_chunks": [
+        "index_001"
+      ],
+      "source_document": "document_2.pdf",
+      "difficulty": "medium",
+      "category": "vector-store",
+      "min_citation_accuracy": 0.8,
+      "metadata": {
+        "tags": [
+          "S3 Vectors",
+          "indexing",
+          "configuration"
+        ]
+      }
+    },
+    {
+      "question": "How does the RAG agent handle citations?",
+      "expected_answer": "The RAG agent retrieves the top-5 most relevant chunks based on cosine similarity. For each retrieved chunk, it extracts metadata including source document, page number, and section. These become citations in the final answer, allowing users to verify claims against source material.",
+      "expected_chunks": [
+        "rag_001",
+        "rag_002"
+      ],
+      "source_document": "document_2.pdf",
+      "difficulty": "medium",
+      "category": "rag",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "citations",
+          "retrieval",
+          "metadata"
+        ]
+      }
+    },
+    {
+      "question": "What caching strategy is used?",
+      "expected_answer": "Redis caching is implemented at multiple levels: embedding cache (prevents re-embedding duplicate queries), retrieval cache (caches search results for popular questions), and answer cache (stores final responses). Cache TTL is 24 hours. This reduces latency by 40-50% for repeated queries and cuts API costs significantly.",
+      "expected_chunks": [
+        "cache_001"
+      ],
+      "source_document": "document_3.pdf",
+      "difficulty": "medium",
+      "category": "optimization",
+      "min_citation_accuracy": 0.8,
+      "metadata": {
+        "tags": [
+          "caching",
+          "Redis",
+          "performance"
+        ]
+      }
+    },
+    {
+      "question": "Describe the CORS configuration for document upload.",
+      "expected_answer": "S3 bucket CORS is configured to allow PUT, POST, GET, and HEAD methods from all origins (*) with ETag header exposure. This enables browser-based direct uploads using presigned URLs without going through the backend. Max-age is set to 3000 seconds for caching the preflight response.",
+      "expected_chunks": [
+        "cors_001"
+      ],
+      "source_document": "document_3.pdf",
+      "difficulty": "easy",
+      "category": "security",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "CORS",
+          "S3",
+          "upload"
+        ]
+      }
+    },
+    {
+      "question": "What IAM permissions are required for S3 Vectors operations?",
+      "expected_answer": "EC2 role requires s3vectors:GetIndex, s3vectors:GetVectors, s3vectors:QueryVectors, and s3vectors:PutVectors permissions. GetIndex is needed to read index metadata, QueryVectors for similarity search, and PutVectors for uploading new embeddings. CreateIndex is restricted to Lambda only to prevent accidental index recreation.",
+      "expected_chunks": [
+        "iam_001"
+      ],
+      "source_document": "document_3.pdf",
+      "difficulty": "hard",
+      "category": "security",
+      "min_citation_accuracy": 0.8,
+      "metadata": {
+        "tags": [
+          "IAM",
+          "S3 Vectors",
+          "permissions"
+        ]
+      }
+    },
+    {
+      "question": "Explain the monitoring and observability setup.",
+      "expected_answer": "Langfuse is integrated for comprehensive tracing and experiment tracking. Every query logs: question, retrieved chunks with scores, LLM input/output tokens, latency breakdown, and cost. This enables comparative analysis between RAG strategies and identifies performance bottlenecks. Custom metrics track citation accuracy and answer relevance.",
+      "expected_chunks": [
+        "monitoring_001"
+      ],
+      "source_document": "document_4.pdf",
+      "difficulty": "medium",
+      "category": "observability",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "Langfuse",
+          "monitoring",
+          "observability"
+        ]
+      }
+    },
+    {
+      "question": "What is the evaluation framework?",
+      "expected_answer": "The evaluation framework combines three approaches: manual metrics (NDCG@5, precision/recall), RAGAS automated metrics (faithfulness, answer relevance), and LLM-as-Judge evaluation (relevance, completeness, coherence, hallucination scoring). Ground truth dataset with 100 Q&A pairs enables systematic benchmarking.",
+      "expected_chunks": [
+        "eval_001",
+        "eval_002"
+      ],
+      "source_document": "document_4.pdf",
+      "difficulty": "hard",
+      "category": "evaluation",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "evaluation",
+          "metrics",
+          "testing"
+        ]
+      }
+    },
+    {
+      "question": "How are API endpoints secured?",
+      "expected_answer": "API Gateway sits in front of the system with request validation. Network security uses security groups to restrict traffic: ALB only accepts from API Gateway, EC2 only from ALB. Presigned URLs for S3 uploads include expiration (15 minutes) and object-specific permissions. No public SSH access to EC2.",
+      "expected_chunks": [
+        "security_001"
+      ],
+      "source_document": "document_4.pdf",
+      "difficulty": "hard",
+      "category": "security",
+      "min_citation_accuracy": 0.8,
+      "metadata": {
+        "tags": [
+          "security",
+          "API Gateway",
+          "authentication"
+        ]
+      }
+    },
+    {
+      "question": "Explain the database schema for sessions and documents.",
+      "expected_answer": "PostgreSQL stores Sessions (session_id, user_id, created_at, updated_at) and Documents (doc_id, session_id, filename, upload_status, chunk_count). Document chunks are stored with metadata in Document_Chunks table with fields: chunk_id, doc_id, content_hash, page_number, section, source_uri. This enables efficient tracking and citation.",
+      "expected_chunks": [
+        "db_001"
+      ],
+      "source_document": "document_5.pdf",
+      "difficulty": "medium",
+      "category": "database",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "PostgreSQL",
+          "schema",
+          "database"
+        ]
+      }
+    },
+    {
+      "question": "What happens during document upload and processing?",
+      "expected_answer": "User uploads PDF via CloudFront CORS presigned URL to S3. Event triggers SQS message. Lambda polls queue, downloads PDF, extracts text, creates semantic chunks, generates embeddings via Bedrock, uploads vectors to S3 Vectors with metadata. PostgreSQL updated with status. Frontend polls status endpoint until completion.",
+      "expected_chunks": [
+        "pipeline_001",
+        "pipeline_002"
+      ],
+      "source_document": "document_5.pdf",
+      "difficulty": "hard",
+      "category": "data-pipeline",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "document-upload",
+          "event-driven",
+          "pipeline"
+        ]
+      }
+    },
+    {
+      "question": "How does the system handle large documents?",
+      "expected_answer": "Large documents are chunked with semantic awareness to maintain context. Each chunk (512 tokens average) is independent yet overlaps by 10% with adjacent chunks. Vector index supports filtering by page_number for pagination. Retrieval returns top-5 chunks. Large documents don't impact latency significantly due to efficient vector indexing.",
+      "expected_chunks": [
+        "scaling_001"
+      ],
+      "source_document": "document_5.pdf",
+      "difficulty": "medium",
+      "category": "performance",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "chunking",
+          "scaling",
+          "large-documents"
+        ]
+      }
+    },
+    {
+      "question": "What metrics indicate good RAG performance?",
+      "expected_answer": "Key metrics: Citation Accuracy > 85% (answers cite correct documents), NDCG@5 > 0.75 (retrieval quality), Answer Relevance > 0.8 (LLM judge score), latency < 2 seconds (user experience). These are tracked via Langfuse with alerts if any metric drops below thresholds.",
+      "expected_chunks": [
+        "metrics_001"
+      ],
+      "source_document": "document_1.pdf",
+      "difficulty": "medium",
+      "category": "evaluation",
+      "min_citation_accuracy": 0.8,
+      "metadata": {
+        "tags": [
+          "metrics",
+          "SLA",
+          "monitoring"
+        ]
+      }
+    },
+    {
+      "question": "How are model updates managed?",
+      "expected_answer": "RAG agent supports Langfuse prompt registry integration for versioned prompts. Different prompt versions can be A/B tested against ground truth dataset. Model ID can be switched between Gemini models via configuration. Vector index is immutable; new variants are created with different names for comparison.",
+      "expected_chunks": [
+        "versioning_001"
+      ],
+      "source_document": "document_2.pdf",
+      "difficulty": "medium",
+      "category": "mlops",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "versioning",
+          "prompts",
+          "A/B testing"
+        ]
+      }
+    },
+    {
+      "question": "What is the cost breakdown of the system?",
+      "expected_answer": "Main costs: Bedrock embeddings (~$0.0002 per 1K tokens), Gemini LLM calls (~$0.075/$0.3 per 1M input/output tokens), S3 storage (~$0.023/GB/month), S3 Vectors query costs (~$0.01 per 100K queries). Typical query costs $0.001-0.005. Redis caching reduces LLM calls by 40%, saving ~$1200/month.",
+      "expected_chunks": [
+        "cost_001"
+      ],
+      "source_document": "document_3.pdf",
+      "difficulty": "medium",
+      "category": "economics",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "cost",
+          "pricing",
+          "economics"
+        ]
+      }
+    },
+    {
+      "question": "How are retrieval strategies compared?",
+      "expected_answer": "Three strategies tested: (1) Vector-only: cosine similarity on embeddings, (2) Hybrid: fusion of vector + BM25 results, (3) Reranked: vector top-10, reranked by cross-encoder. Each tested on ground truth dataset measuring NDCG@5, citation accuracy, latency. Results inform production selection.",
+      "expected_chunks": [
+        "retrieval_001"
+      ],
+      "source_document": "document_4.pdf",
+      "difficulty": "hard",
+      "category": "evaluation",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "retrieval",
+          "strategies",
+          "comparison"
+        ]
+      }
+    },
+    {
+      "question": "What production deployment considerations exist?",
+      "expected_answer": "Blue-green deployment via Pulumi ensures zero downtime. Health checks monitor endpoint availability. Graceful shutdown drains existing requests before stopping. Auto-scaling adjusts EC2 count based on CPU/memory. CloudWatch alarms trigger for failures. Database backups run hourly. Document retention policy: 90 days for non-paid users.",
+      "expected_chunks": [
+        "deploy_001"
+      ],
+      "source_document": "document_5.pdf",
+      "difficulty": "hard",
+      "category": "operations",
+      "min_citation_accuracy": 0.75,
+      "metadata": {
+        "tags": [
+          "deployment",
+          "reliability",
+          "operations"
+        ]
+      }
+    }
+  ]
+}

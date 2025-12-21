@@ -27,8 +27,10 @@ COPY backend/core/document_processing/requirements.txt ${LAMBDA_TASK_ROOT}/requi
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt asyncpg==0.29.0
 
-# Copy entire backend code
-COPY backend/ ${LAMBDA_TASK_ROOT}/backend/
+# Copy only document_processing module (self-contained, no external dependencies)
+COPY backend/core/document_processing/ ${LAMBDA_TASK_ROOT}/backend/core/document_processing/
+COPY backend/__init__.py ${LAMBDA_TASK_ROOT}/backend/
+COPY backend/core/__init__.py ${LAMBDA_TASK_ROOT}/backend/core/
 
 # Create non-root user for security (Lambda runs as root by default, but best practice)
 # Note: AWS Lambda requires specific permissions, so we keep root for now

@@ -40,54 +40,149 @@ A production-grade **Retrieval-Augmented Generation (RAG)** application that ena
 
 ## 🏗️ Architecture
 
+### Cloud Infrastructure (Production)
+
+The Student Helper runs on **AWS in Sydney (ap-southeast-2)** with a carefully designed architecture that handles REST API calls, async document processing, and semantic search at scale.
+
+```mermaid
+flowchart TB
+    subgraph Internet["🌐 INTERNET (Public Users)"]
+        User((👤 User<br/>Browser))
+    end
+
+    subgraph Edge["☁️ AWS EDGE NETWORK"]
+        subgraph CF["CloudFront CDN"]
+            CF_TLS["🔒 TLS Termination<br/>HTTPS"]
+        end
+        subgraph Behaviors["📋 Routing Behaviors"]
+            B_Static["/static/* → S3"]
+            B_API["/api/* → API GW"]
+            B_WS["/ws/* → API GW"]
+        end
+    end
+
+    subgraph APIGWService["🌉 API Gateway"]
+        APIGW["HTTP API<br/>VPC Link"]
+    end
+
+    subgraph VPC["🏢 VPC: 10.0.0.0/16"]
+        subgraph PublicSubnet["🟢 PUBLIC (10.0.0.0/24)"]
+            ALB["⚖️ ALB<br/>HTTP :80"]
+        end
+        subgraph PrivateSubnet["🔵 PRIVATE (10.0.1.0/24)"]
+            EC2["💻 EC2 Backend<br/>FastAPI + Uvicorn :8000<br/>No Public IP"]
+        end
+        subgraph DataSubnet["💾 DATA (Multi-AZ)"]
+            RDS["🗄️ RDS PostgreSQL<br/>Encrypted | Multi-AZ"]
+        end
+        subgraph LambdaSubnet["λ LAMBDA (10.0.2.0/24)"]
+            Lambda["λ Lambda<br/>Document Processing"]
+            VPCEndpoints["🔗 VPC Endpoints<br/>S3 | Bedrock | SQS"]
+        end
+        subgraph Storage["📁 S3 STORAGE"]
+            S3Front["📄 Frontend<br/>React SPA"]
+            S3Docs["📑 Documents<br/>PDF Uploads"]
+            S3Vec["🧮 Vectors<br/>1536-dim"]
+        end
+        subgraph Messaging["📬 MESSAGING"]
+            SQS["📬 SQS Queue"]
+            DLQ["⚠️ Dead Letter Queue"]
+        end
+    end
+
+    subgraph External["☁️ AWS SERVICES & EXTERNAL APIs"]
+        Bedrock["🤖 Bedrock<br/>Titan Embeddings"]
+        GoogleAI["🔍 Google AI<br/>LLM Chat"]
+    end
+
+    User -->|HTTPS| CF_TLS
+    CF_TLS --> Behaviors
+    B_Static -->|OAI| S3Front
+    B_API -->|HTTP| APIGW
+    B_WS -->|HTTP<br/>Upgrade| APIGW
+    APIGW -->|VPC Link| ALB
+    ALB -->|TCP 8000| EC2
+    EC2 -->|TCP 5432| RDS
+    EC2 -->|PUT/GET| S3Docs
+    EC2 -->|Query| S3Vec
+    EC2 -->|SendMessage| SQS
+    EC2 -.->|HTTPS| VPCEndpoints
+    VPCEndpoints --> Bedrock
+    EC2 -->|HTTPS<br/>via NAT| GoogleAI
+    SQS -->|Event| Lambda
+    Lambda -->|GET/PUT| S3Docs
+    Lambda -->|PUT| S3Vec
 ```
-┌─────────────┐
-│   Frontend  │  React + TypeScript
-│   (React)   │  Shadcn UI Components
-└──────┬──────┘
-       │ HTTP
-       ▼
-┌─────────────────────────────────────────┐
-│         FastAPI HTTP Layer              │  /api/v1
-│  ┌────────┬──────────┬────────┬────┐   │
-│  │Sessions│Documents │Diagrams│Jobs│   │
-│  └────────┴──────────┴────────┴────┘   │
-└──────────┬──────────────────────────────┘
-           │ Dependency Injection
-           ▼
-┌─────────────────────────────────────────┐
-│      Application Services Layer         │
-│  ┌────────────┬──────────┬─────────┐   │
-│  │ChatService │Document  │JobServ. │   │
-│  │            │Service   │         │   │
-│  └────────────┴──────────┴─────────┘   │
-└──────┬─────────────────────────────────┘
-       │
-       ├─────────────┬──────────────┐
-       │             │              │
-       ▼             ▼              ▼
-   ┌────────┐  ┌─────────────┐  ┌──────────┐
-   │ RAG    │  │  Document   │  │  Session │
-   │ Agent  │  │  Pipeline   │  │ Manager  │
-   └────┬───┘  └─────┬───────┘  └──────────┘
-        │            │
-        │    ┌───────┼────────────┐
-        │    │       │            │
-        ▼    ▼       ▼            ▼
-   ┌─────────────────────────────────┐
-   │     Boundary Layer              │
-   │  ┌────────┐  ┌────────────────┐│
-   │  │Database│  │ Vector Store   ││
-   │  │SQLAlch.│  │ FAISS/S3Vec.   ││
-   │  └────────┘  └────────────────┘│
-   └──────┬────────────────┬─────────┘
-          │                │
-          ▼                ▼
-      PostgreSQL      FAISS/S3Vectors
-      (Sessions,      (Embeddings,
-       Documents,      Chunks,
-       Chat,Logs)      Metadata)
+
+**Key Design Decisions:**
+- **Bedrock Titan** for embeddings (via VPC endpoints—private network)
+- **Google AI** for LLM chat (via NAT gateway—internet egress)
+- **CloudFront → API Gateway → VPC Link → ALB → EC2** routing chain (unified domain, no CORS)
+- **Multi-AZ RDS** for resilience, **SQS + Lambda** for async processing
+- **Least-privilege Security Groups** (see below)
+
+#### Security Group Architecture
+
+Five security groups implement **micro-segmentation** with identity-based rules. Traffic flows only through explicitly allowed paths:
+
+```mermaid
+flowchart TB
+    Internet["🌐 Internet<br/>CloudFront"]
+
+    ALB_SG["🔒 ALB SG<br/>━━━━━━━━━━<br/>In: 80 from CF PL<br/>Out: 8000→Backend SG<br/>Self: VPC Link"]
+
+    Backend_SG["🔒 Backend SG<br/>━━━━━━━━━━<br/>In: 8000 from ALB<br/>Out: ALL 0.0.0.0/0"]
+
+    DB_SG["🔒 Database SG<br/>━━━━━━━━━━<br/>In: 5432 from<br/>Backend SG<br/>+ Lambda SG"]
+
+    Endpoints_SG["🔒 Endpoints SG<br/>━━━━━━━━━━<br/>In: 443 from<br/>Backend SG<br/>+ Lambda SG"]
+
+    Lambda_SG["🔒 Lambda SG<br/>━━━━━━━━━━<br/>In: None AWS mgmt<br/>Out: ALL 0.0.0.0/0"]
+
+    Internet -->|HTTP 80| ALB_SG
+    ALB_SG -->|TCP 8000| Backend_SG
+    Backend_SG -->|TCP 5432| DB_SG
+    Backend_SG -->|TCP 443| Endpoints_SG
+    Lambda_SG -->|TCP 5432| DB_SG
+    Lambda_SG -->|TCP 443| Endpoints_SG
+    Backend_SG -.->|Internet| Internet
+    Lambda_SG -.->|Internet| Internet
 ```
+
+| Security Group | Inbound | Outbound | Purpose |
+|---|---|---|---|
+| **ALB SG** | Port 80 from CloudFront prefix list | Port 8000 → Backend SG + self | Public entry point, routes traffic to backend |
+| **Backend SG** | Port 8000 from ALB SG | ALL (0.0.0.0/0) | FastAPI application, full internet access for APIs |
+| **Database SG** | Port 5432 from Backend + Lambda SGs | None (implicit allow reply) | RDS PostgreSQL, locked down to compute only |
+| **Endpoints SG** | Port 443 from Backend + Lambda SGs | None (implicit allow reply) | VPC endpoints (Bedrock, S3, SQS) |
+| **Lambda SG** | None (AWS manages SQS) | ALL (0.0.0.0/0) | Document processor, outbound to AWS services |
+
+**Key principle:** Rules use **security group IDs** (identity-based) instead of IP addresses. When you add a new EC2 instance to Backend SG, it automatically inherits all rules—zero manual IP whitelisting.
+
+#### API Gateway & VPC Link Pattern
+
+Why route through API Gateway instead of connecting CloudFront directly to ALB? **Single domain, no CORS headaches.**
+
+- **CloudFront** terminates HTTPS and routes based on path:
+  - `/static/*` → S3 frontend (static assets)
+  - `/api/*` → API Gateway → ALB (REST API)
+  - `/ws/*` → API Gateway → ALB (WebSocket)
+
+- **API Gateway's VPC Link** creates ENI tunnels into your private VPC, allowing a public AWS service to securely reach your private ALB without exposing it to the internet.
+
+- **Result:** Frontend and API on the same domain (e.g., `app.example.com`), no CORS preflight requests, unified certificate management.
+
+See [api_gateway.py](IAC/components/edge/api_gateway.py) and [cloudfront.py](IAC/components/edge/cloudfront.py) for implementation details.
+
+---
+
+Read [IAC README](IAC/README.md) for the complete architecture story and [Networking Deep Dive](IAC/diagrams/NETWORKING_DEEP_DIVE.md) for protocol flows.
+
+---
+
+### Backend Architecture
+
+The backend uses **clean architecture** with strict separation of concerns: API routes → Services → Domain logic → Data boundaries. Each layer is independently testable and swappable. See [Backend README](backend/README.md) for the complete architecture and component breakdown.
 
 ---
 
@@ -207,51 +302,86 @@ LANGFUSE_SECRET_KEY=
 ## 📁 Project Structure
 
 ```
-student-helper/
-├── backend/                    # FastAPI application
-│   ├── api/                    # HTTP interface layer
-│   │   ├── routers/           # 5 endpoint groups
-│   │   ├── deps/              # Dependency injection
-│   │   └── main.py            # FastAPI app setup
-│   ├── application/            # Business logic layer
-│   │   ├── services/          # 5 service classes
-│   │   └── adapters/          # External integrations
-│   ├── core/                   # Domain logic
-│   │   ├── agentic_system/    # RAG agent
-│   │   └── document_processing/ # Pipeline
-│   ├── boundary/               # External adapters
-│   │   ├── db/                # Database (SQLAlchemy)
-│   │   └── vdb/               # Vector store (FAISS/S3)
-│   ├── configs/                # Settings management
-│   ├── models/                 # Pydantic DTOs
-│   ├── observability/          # Logging, tracing
-│   ├── main.py                 # Entry point
-│   └── README.md               # Backend documentation
+Student_Helper/
+├── IAC/                        # Infrastructure as Code (Pulumi)
+│   ├── components/             # AWS infrastructure modules
+│   │   ├── networking/         # VPC, security groups, endpoints
+│   │   ├── compute/            # EC2, ALB, Lambda
+│   │   ├── edge/               # CloudFront, API Gateway
+│   │   ├── storage/            # S3, RDS, ECR
+│   │   ├── messaging/          # SQS queues
+│   │   └── security/           # IAM roles, secrets
+│   └── diagrams/               # Architecture documentation
 │
-├── study-buddy-ai/             # Frontend (React/TypeScript)
+├── backend/                    # FastAPI Application (Python)
+│   ├── api/                    # HTTP API layer (FastAPI routers)
+│   │   ├── routers/            # Session, Document, Chat, Jobs, Health
+│   │   └── deps/               # Dependency injection
+│   │
+│   ├── application/            # Service orchestration layer
+│   │   ├── services/           # ChatService, DocumentService, etc.
+│   │   └── adapters/           # External integrations
+│   │
+│   ├── core/                   # Domain/business logic
+│   │   ├── agentic_system/     # RAG Agent + Visual Knowledge Agent
+│   │   └── document_processing/ # Async pipeline (Lambda-ready)
+│   │
+│   ├── boundary/               # Infrastructure integration layer
+│   │   ├── db/                 # SQLAlchemy ORM + CRUD operations
+│   │   ├── vdb/                # Vector store (FAISS/S3)
+│   │   └── aws/                # AWS service clients
+│   │
+│   ├── models/                 # Shared Pydantic data models
+│   ├── configs/                # Configuration management
+│   ├── observability/          # Logging & tracing
+│   ├── evaluation/             # Model evaluation & testing
+│   └── main.py                 # FastAPI entry point
+│
+├── study-buddy-ai/             # Frontend (React + TypeScript + Vite)
 │   ├── src/
-│   │   ├── components/        # Shadcn UI components
-│   │   ├── pages/             # Route pages
-│   │   ├── api/               # API client
+│   │   ├── components/         # Reusable UI components
+│   │   │   ├── chat/           # Chat interface
+│   │   │   ├── documents/      # Document upload
+│   │   │   ├── sessions/       # Session management
+│   │   │   ├── knowledge/      # Diagram & knowledge visualization
+│   │   │   └── ui/             # shadcn/ui components
+│   │   ├── pages/              # Route pages
+│   │   ├── hooks/              # Custom React hooks
+│   │   ├── services/           # API client layer
+│   │   ├── types/              # TypeScript type definitions
 │   │   └── App.tsx
 │   └── package.json
 │
-├── docker-compose.yml          # Local infrastructure
-├── pyproject.toml              # Python dependencies (uv)
+├── tests/                      # Comprehensive test suite
+│   ├── api/                    # API endpoint tests
+│   ├── application/            # Service layer tests
+│   ├── core/                   # Business logic tests
+│   ├── integration/            # Database & integration tests
+│   ├── unit/                   # Unit tests
+│   └── infrastructure/         # IaC validation tests
+│
+├── documentation/              # Project documentation
+│   ├── 01_architecture/        # Architecture deep dives
+│   ├── 02_networking/          # Networking guides
+│   ├── 03_troubleshooting/     # Troubleshooting guides
+│   ├── 04_implementation_guides/ # Step-by-step implementation
+│   └── 04_lessons_learned/     # Retrospectives & learnings
+│
+├── docker-compose.yml          # Local multi-container setup
+├── Dockerfile                  # Backend container image
+├── pyproject.toml              # Python project config
 ├── uv.lock                     # Dependency lock file
 ├── .env.example                # Environment template
 └── README.md                   # This file
 ```
 
-**Detailed Documentation:**
-- [Backend Architecture](backend/README.md) - Complete backend overview
-- [API Layer](backend/api/README.md) - HTTP endpoints & routes
-- [Application Services](backend/application/README.md) - Business logic
-- [Boundary Layer](backend/boundary/README.md) - Database & vector store
-- [Core Domain](backend/core/README.md) - RAG agent & pipelines
-- [Configuration](backend/configs/README.md) - Settings management
-- [Models & Schemas](backend/models/README.md) - API contracts
-- [Observability](backend/observability/README.md) - Logging & tracing
+**Key Directories:**
+- **[IAC/README.md](IAC/README.md)** - Complete infrastructure documentation
+- **[backend/README.md](backend/README.md)** - Backend architecture & design
+- **[backend/api/README.md](backend/api/README.md)** - HTTP routes & endpoints
+- **[backend/core/README.md](backend/core/README.md)** - RAG agent & document processing
+- **[backend/boundary/README.md](backend/boundary/README.md)** - Database & vector store
+- **[backend/configs/README.md](backend/configs/README.md)** - Configuration management
 
 ---
 
@@ -495,6 +625,14 @@ Solution: Change port with --port 9000 or kill existing process
 
 ## 📚 Documentation Index
 
+### 🌐 Infrastructure & Deployment
+| Document | Purpose |
+|----------|---------|
+| [**IAC README**](IAC/README.md) | **Complete AWS architecture, networking, security, and Pulumi deployment** |
+| [Deployment Checklist](IAC/diagrams/ARCHITECTS_DEPLOYMENT_CHECKLIST.md) | Step-by-step learning guide for new architects |
+| [Networking Deep Dive](IAC/diagrams/NETWORKING_DEEP_DIVE.md) | Protocol flows, security zones, and troubleshooting |
+
+### 🔧 Backend Application
 | Document | Purpose |
 |----------|---------|
 | [Backend README](backend/README.md) | Complete backend architecture & design |
@@ -505,6 +643,10 @@ Solution: Change port with --port 9000 or kill existing process
 | [Configuration](backend/configs/README.md) | Settings & environment variables |
 | [Models & Schemas](backend/models/README.md) | API request/response contracts |
 | [Observability](backend/observability/README.md) | Logging, tracing, monitoring |
+
+### 📡 API & Interactive Docs
+| Document | Purpose |
+|----------|---------|
 | [API Docs (Swagger)](http://localhost:8000/docs) | Interactive API explorer |
 
 ---

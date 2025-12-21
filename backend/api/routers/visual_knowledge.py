@@ -59,6 +59,7 @@ async def generate_visual_knowledge(
 
     Request body:
     - ai_answer: The assistant response text to visualize
+    - message_index: Index of the message in chat history for sorting/tracking
 
     Response:
     - s3_key: S3 object key for the diagram (e.g., sessions/{session_id}/images/{uuid}.png)
@@ -84,6 +85,7 @@ async def generate_visual_knowledge(
         result = await visual_knowledge_service.generate(
             session_id=session_id,
             ai_answer=request.ai_answer,
+            message_index=request.message_index,
         )
         return result
     except ValueError as e:
@@ -154,6 +156,7 @@ async def get_session_images(
                     presigned_url=presigned_url,
                     expires_at=expires_at.isoformat(),
                     mime_type=image.mime_type,
+                    message_index=image.message_index,
                     main_concepts=image.main_concepts,
                     branches=[
                         ConceptBranchResponse(**branch) for branch in image.branches

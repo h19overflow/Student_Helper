@@ -90,6 +90,25 @@ class RAGAgent:
                 labels=[prompt_label] if prompt_label else None,
             )
 
+    def _format_search_context(self, results: list) -> str:
+        """Format search results into context string for prompts."""
+        if not results:
+            return "No relevant documents found."
+
+        formatted_chunks = []
+        for result in results:
+            chunk_text = f"""---
+chunk_id: {result.chunk_id}
+page: {result.metadata.page}
+section: {result.metadata.section}
+source_uri: {result.metadata.source_uri}
+relevance_score: {result.similarity_score:.3f}
+
+{result.content}
+---"""
+            formatted_chunks.append(chunk_text)
+        return "\n".join(formatted_chunks)
+
     def invoke(
         self,
         question: str,
@@ -112,7 +131,14 @@ class RAGAgent:
             label=self._prompt_label,
         )
 
-        context = self._search_tool.invoke({"query": question, "k": 5})
+        # Search with session_id filter for multi-tenant isolation
+        logger.info(f"{__name__}:invoke - Searching with session_id={session_id}")
+        results = self._vector_store.similarity_search(
+            query=question,
+            k=5,
+            session_id=session_id,
+        )
+        context = self._format_search_context(results)
 
         # Format chat history if provided
         history_text = ""
@@ -155,7 +181,15 @@ class RAGAgent:
             label=self._prompt_label,
         )
 
-        context = await self._search_tool.ainvoke({"query": question, "k": 5})
+        # Search with session_id filter for multi-tenant isolation
+        logger.info(f"{__name__}:ainvoke - Searching with session_id={session_id}")
+        results = await run_in_threadpool(
+            self._vector_store.similarity_search,
+            query=question,
+            k=5,
+            session_id=session_id,
+        )
+        context = self._format_search_context(results)
 
         # Format chat history if provided
         history_text = ""

@@ -4,17 +4,74 @@ Document status updater for RDS.
 Updates document processing status in PostgreSQL:
 PENDING → PROCESSING → COMPLETED (or FAILED with error message)
 
-Dependencies: sqlalchemy, backend.boundary.db.models
-System role: Database persistence layer
+Self-contained database operations for Lambda deployment.
+Uses DATABASE_URL environment variable for connection.
+
+Dependencies: sqlalchemy, asyncpg
+System role: Database persistence layer for Lambda
 """
 
 import logging
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import os
+from enum import Enum
 
-from backend.boundary.db.models.document_model import DocumentModel, DocumentStatus
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 logger = logging.getLogger(__name__)
+
+
+class DocumentStatus(str, Enum):
+    """Document processing lifecycle states (mirrors RDS schema)."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+def get_async_engine():
+    """
+    Create async engine from DATABASE_URL environment variable.
+
+    Returns:
+        AsyncEngine: SQLAlchemy async engine
+
+    Raises:
+        ValueError: DATABASE_URL not set
+    """
+    database_url = os.getenv("DATABASE_URL", "")
+    if not database_url:
+        raise ValueError("DATABASE_URL environment variable not set")
+
+    # Convert postgres:// to postgresql+asyncpg://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    return create_async_engine(
+        database_url,
+        echo=False,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+    )
+
+
+def get_async_session_factory() -> async_sessionmaker:
+    """
+    Create async session factory for Lambda use.
+
+    Returns:
+        async_sessionmaker: Session factory
+    """
+    engine = get_async_engine()
+    return async_sessionmaker(
+        bind=engine,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+    )
 
 
 class DocumentStatusUpdater:
@@ -33,8 +90,6 @@ class DocumentStatusUpdater:
         """
         Mark document as PROCESSING.
 
-        Called when Lambda receives SQS message and starts pipeline.
-
         Args:
             document_id: Document UUID
 
@@ -42,14 +97,24 @@ class DocumentStatusUpdater:
             ValueError: Document not found
         """
         try:
-            stmt = select(DocumentModel).where(DocumentModel.id == document_id)
-            result = await self.db.execute(stmt)
-            document = result.scalar_one_or_none()
+            from sqlalchemy import text
 
-            if not document:
+            # Use raw SQL update for simplicity (avoids needing ORM model import)
+            stmt = text("""
+                UPDATE documents
+                SET status = :status, updated_at = NOW()
+                WHERE id = :doc_id
+                RETURNING id
+            """)
+            result = await self.db.execute(
+                stmt,
+                {"status": DocumentStatus.PROCESSING.value, "doc_id": document_id},
+            )
+            row = result.fetchone()
+
+            if not row:
                 raise ValueError(f"Document {document_id} not found")
 
-            document.status = DocumentStatus.PROCESSING
             await self.db.commit()
 
             logger.info(
@@ -66,8 +131,6 @@ class DocumentStatusUpdater:
         """
         Mark document as COMPLETED.
 
-        Called when pipeline successfully processes document.
-
         Args:
             document_id: Document UUID
 
@@ -75,15 +138,23 @@ class DocumentStatusUpdater:
             ValueError: Document not found
         """
         try:
-            stmt = select(DocumentModel).where(DocumentModel.id == document_id)
-            result = await self.db.execute(stmt)
-            document = result.scalar_one_or_none()
+            from sqlalchemy import text
 
-            if not document:
+            stmt = text("""
+                UPDATE documents
+                SET status = :status, error_message = NULL, updated_at = NOW()
+                WHERE id = :doc_id
+                RETURNING id
+            """)
+            result = await self.db.execute(
+                stmt,
+                {"status": DocumentStatus.COMPLETED.value, "doc_id": document_id},
+            )
+            row = result.fetchone()
+
+            if not row:
                 raise ValueError(f"Document {document_id} not found")
 
-            document.status = DocumentStatus.COMPLETED
-            document.error_message = None
             await self.db.commit()
 
             logger.info(
@@ -100,8 +171,6 @@ class DocumentStatusUpdater:
         """
         Mark document as FAILED with error details.
 
-        Called when pipeline raises exception.
-
         Args:
             document_id: Document UUID
             error_message: Human-readable error description
@@ -110,21 +179,35 @@ class DocumentStatusUpdater:
             ValueError: Document not found
         """
         try:
-            stmt = select(DocumentModel).where(DocumentModel.id == document_id)
-            result = await self.db.execute(stmt)
-            document = result.scalar_one_or_none()
+            from sqlalchemy import text
 
-            if not document:
+            # Truncate error message to fit column (2048 chars)
+            truncated_error = error_message[:2000] if len(error_message) > 2000 else error_message
+
+            stmt = text("""
+                UPDATE documents
+                SET status = :status, error_message = :error_msg, updated_at = NOW()
+                WHERE id = :doc_id
+                RETURNING id
+            """)
+            result = await self.db.execute(
+                stmt,
+                {
+                    "status": DocumentStatus.FAILED.value,
+                    "error_msg": truncated_error,
+                    "doc_id": document_id,
+                },
+            )
+            row = result.fetchone()
+
+            if not row:
                 raise ValueError(f"Document {document_id} not found")
-
-            document.status = DocumentStatus.FAILED
-            document.error_message = error_message
 
             await self.db.commit()
 
             logger.info(
                 f"{__name__}:mark_failed - Document marked as FAILED",
-                extra={"document_id": document_id, "error_message": error_message},
+                extra={"document_id": document_id, "error_message": truncated_error},
             )
 
         except Exception as e:

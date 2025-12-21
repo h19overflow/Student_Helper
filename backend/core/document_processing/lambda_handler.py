@@ -11,10 +11,11 @@ Environment variables (to be configured):
 - AWS_REGION: AWS region
 - LOG_LEVEL: Logging level
 
-Dependencies: models.sqs_event, entrypoint
+Dependencies: models.sqs_event, entrypoint, database
 System role: Lambda entry point for async document ingestion
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -22,6 +23,7 @@ from typing import Any, Dict
 
 from .models.sqs_event import SQSEventSchema
 from .entrypoint import DocumentPipeline
+from .database.document_status_updater import DocumentStatusUpdater, get_async_session_factory
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -115,6 +117,30 @@ def validate_environment() -> Dict[str, str]:
     return env_config
 
 
+async def _update_status_processing(document_id: str) -> None:
+    """Update document status to PROCESSING in RDS."""
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        updater = DocumentStatusUpdater(session)
+        await updater.mark_processing(document_id)
+
+
+async def _update_status_completed(document_id: str) -> None:
+    """Update document status to COMPLETED in RDS."""
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        updater = DocumentStatusUpdater(session)
+        await updater.mark_completed(document_id)
+
+
+async def _update_status_failed(document_id: str, error_message: str) -> None:
+    """Update document status to FAILED in RDS."""
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        updater = DocumentStatusUpdater(session)
+        await updater.mark_failed(document_id, error_message)
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda handler for SQS document processing events.
@@ -137,7 +163,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     # Validate environment at start
     try:
-        _env_config = validate_environment()  # Will be used in Stage 3
+        _env_config = validate_environment()  # noqa: F841
     except ValueError as e:
         logger.error(f"{__name__}:handler - ValueError: {e}")
         return {
@@ -154,15 +180,26 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         try:
             # Parse and validate SQS message
             message = parse_sqs_record(record)
+            document_id = str(message.document_id)
 
             logger.info(
                 f"{__name__}:handler - Processing document",
                 extra={
-                    "document_id": str(message.document_id),
+                    "document_id": document_id,
                     "session_id": str(message.session_id),
                     "s3_key": message.s3_key,
                 },
             )
+
+            # Update status to PROCESSING before pipeline starts
+            try:
+                asyncio.run(_update_status_processing(document_id))
+            except Exception as e:
+                logger.error(
+                    f"{__name__}:handler - Failed to update status to PROCESSING: {type(e).__name__}: {e}",
+                    extra={"document_id": document_id},
+                )
+                raise DocumentProcessingError(f"Failed to update status to PROCESSING: {e}") from e
 
             # Initialize pipeline (done once, reused for all records)
             if not hasattr(handler, "_pipeline"):
@@ -174,14 +211,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             try:
                 pipeline_result = pipeline.process(
                     s3_key=message.s3_key,
-                    document_id=str(message.document_id),
+                    document_id=document_id,
                     session_id=str(message.session_id),
                 )
 
                 logger.info(
                     f"{__name__}:handler - Document processed successfully",
                     extra={
-                        "document_id": str(message.document_id),
+                        "document_id": document_id,
                         "chunk_count": pipeline_result.chunk_count,
                         "processing_time_ms": pipeline_result.processing_time_ms,
                     },
@@ -190,17 +227,25 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             except Exception as e:
                 logger.error(
                     f"{__name__}:handler - {type(e).__name__}: {e}",
-                    extra={"document_id": str(message.document_id)},
+                    extra={"document_id": document_id},
                 )
                 raise DocumentProcessingError(f"Pipeline processing failed: {e}") from e
 
-            # TODO (Stage 4): Update RDS document status to PROCESSING
+            # Update status to COMPLETED after successful processing
+            try:
+                asyncio.run(_update_status_completed(document_id))
+            except Exception as e:
+                logger.error(
+                    f"{__name__}:handler - Failed to update status to COMPLETED: {type(e).__name__}: {e}",
+                    extra={"document_id": document_id},
+                )
+                raise DocumentProcessingError(f"Failed to update status to COMPLETED: {e}") from e
 
             results.append(
                 {
                     "messageId": message_id,
                     "status": "success",
-                    "document_id": str(message.document_id),
+                    "document_id": document_id,
                     "chunk_count": pipeline_result.chunk_count,
                     "processing_time_ms": pipeline_result.processing_time_ms,
                 }
@@ -222,7 +267,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         except DocumentProcessingError as e:
             logger.error(f"{__name__}:handler - DocumentProcessingError: {e}")
             failed_count += 1
-            # TODO (Stage 4): Update RDS document status to FAILED
+
+            # Update status to FAILED in database
+            try:
+                # Extract document_id if available (from message parsed earlier)
+                if "message" in dir() and message is not None:
+                    asyncio.run(_update_status_failed(str(message.document_id), str(e)))
+            except Exception as db_error:
+                logger.error(
+                    f"{__name__}:handler - Failed to update status to FAILED: {type(db_error).__name__}: {db_error}"
+                )
+
             results.append(
                 {
                     "messageId": message_id,

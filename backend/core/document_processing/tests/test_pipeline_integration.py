@@ -18,6 +18,27 @@ def reset_pipeline_singleton():
         delattr(handler, "_pipeline")
 
 
+@pytest.fixture
+def mock_db_updates():
+    """Mock database status update functions."""
+    with patch(
+        "backend.core.document_processing.lambda_handler._update_status_processing"
+    ) as mock_processing, patch(
+        "backend.core.document_processing.lambda_handler._update_status_completed"
+    ) as mock_completed, patch(
+        "backend.core.document_processing.lambda_handler._update_status_failed"
+    ) as mock_failed:
+        # Make them async-compatible
+        mock_processing.return_value = None
+        mock_completed.return_value = None
+        mock_failed.return_value = None
+        yield {
+            "processing": mock_processing,
+            "completed": mock_completed,
+            "failed": mock_failed,
+        }
+
+
 @patch.dict(
     "os.environ",
     {
@@ -28,8 +49,12 @@ def reset_pipeline_singleton():
     },
 )
 @patch("backend.core.document_processing.lambda_handler.DocumentPipeline")
-def test_handler_processes_document(mock_pipeline_class):
+@patch("backend.core.document_processing.lambda_handler.asyncio.run")
+def test_handler_processes_document(mock_asyncio_run, mock_pipeline_class):
     """Test handler calls pipeline with correct parameters."""
+    # Mock asyncio.run to do nothing (skip DB updates)
+    mock_asyncio_run.return_value = None
+
     # Setup mock pipeline
     mock_pipeline = MagicMock()
     mock_pipeline_class.return_value = mock_pipeline
@@ -82,6 +107,9 @@ def test_handler_processes_document(mock_pipeline_class):
         session_id=str(session_id),
     )
 
+    # Verify DB status updates were called (2 calls: processing + completed)
+    assert mock_asyncio_run.call_count == 2
+
 
 @patch.dict(
     "os.environ",
@@ -93,8 +121,12 @@ def test_handler_processes_document(mock_pipeline_class):
     },
 )
 @patch("backend.core.document_processing.lambda_handler.DocumentPipeline")
-def test_handler_pipeline_error(mock_pipeline_class):
+@patch("backend.core.document_processing.lambda_handler.asyncio.run")
+def test_handler_pipeline_error(mock_asyncio_run, mock_pipeline_class):
     """Test handler catches pipeline errors."""
+    # Mock asyncio.run to do nothing (skip DB updates)
+    mock_asyncio_run.return_value = None
+
     # Setup mock pipeline to raise error
     mock_pipeline = MagicMock()
     mock_pipeline_class.return_value = mock_pipeline
@@ -141,8 +173,12 @@ def test_handler_pipeline_error(mock_pipeline_class):
     },
 )
 @patch("backend.core.document_processing.lambda_handler.DocumentPipeline")
-def test_handler_batch_processing(mock_pipeline_class):
+@patch("backend.core.document_processing.lambda_handler.asyncio.run")
+def test_handler_batch_processing(mock_asyncio_run, mock_pipeline_class):
     """Test handler processes multiple documents in batch."""
+    # Mock asyncio.run to do nothing (skip DB updates)
+    mock_asyncio_run.return_value = None
+
     mock_pipeline = MagicMock()
     mock_pipeline_class.return_value = mock_pipeline
 
@@ -210,3 +246,6 @@ def test_handler_batch_processing(mock_pipeline_class):
 
     # Verify pipeline called twice
     assert mock_pipeline.process.call_count == 2
+
+    # Verify DB updates called (2 docs * 2 updates each = 4 calls)
+    assert mock_asyncio_run.call_count == 4

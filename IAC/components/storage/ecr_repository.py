@@ -1,17 +1,45 @@
 """
 ECR Repository Component for Lambda Container Images.
 
-What It Stores: Docker images for Lambda (up to 10GB each).
+Stores Docker images for Lambda document processing pipeline (up to 10GB each).
+
+Integration Flow:
+  1. Developer builds Docker image locally: docker build -t student-helper-lambda-processor:latest .
+  2. Developer authenticates with ECR: aws ecr get-login-password | docker login
+  3. Developer pushes image: docker push <ECR_URL>:latest
+  4. Pulumi reads image_uri from ECR repository: ecr.get_outputs().repository_url
+  5. Pulumi passes to Lambda: ecr_image_uri parameter
+  6. Lambda pulls image on deployment: aws lambda create-function --image-uri <ECR_URL>:latest
 
 Access Control - Who Can Pull:
 1. Lambda Service → Granted via Repository Policy (ecr:BatchGetImage, ecr:GetDownloadUrlForLayer) ✅
 2. EC2 (if needed) → Via IAM Role + ECR VPC Endpoints (ecr.api, ecr.dkr) ✅
-3. Public Internet → DENIED ❌ (Private repository)
+3. Developers (via AWS credentials) → IAM permissions ✅
+4. Public Internet → DENIED ❌ (Private repository)
 
 Key Features:
 - scan_on_push=True: Every image is scanned for CVEs (vulnerabilities) on upload.
 - Lifecycle Policy: Auto-delete old images, keep only the last 5 (saves storage costs).
 - Encryption: Images encrypted at rest (AES256).
+- Tag mutability: MUTABLE (allows overwriting 'latest' tag on each push).
+
+Outputs (Pass to LambdaProcessorComponent):
+  - repository_url: <ACCOUNT>.dkr.ecr.<REGION>.amazonaws.com/<REPO>
+  - repository_arn: arn:aws:ecr:<REGION>:<ACCOUNT>:repository/<REPO>
+  - repository_name: student-helper-lambda-processor
+
+Builder Scripts:
+  - PowerShell: backend/scripts/build-lambda-image.ps1 (builds and optionally pushes)
+  - Python: python -m backend.scripts.ecr_builder (build/push/build-and-push)
+  - Manual: See LAMBDA_DEPLOYMENT_GUIDE.md
+
+Example Pulumi Usage:
+  ecr = EcrRepositoryComponent(name="student-helper", environment=environment)
+
+  lambda_processor = LambdaProcessorComponent(
+      ecr_image_uri=ecr.get_outputs().repository_url + ":latest",
+      ...
+  )
 """
 
 from dataclasses import dataclass

@@ -43,6 +43,9 @@ class LambdaProcessorComponent(pulumi.ComponentResource):
         documents_bucket_name: pulumi.Input[str],
         vectors_bucket_name: pulumi.Input[str],
         secrets_arn: pulumi.Input[str],
+        ecr_image_uri: pulumi.Input[str],
+        database_url: pulumi.Input[str],
+        aws_region: pulumi.Input[str],
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("custom:compute:LambdaProcessor", name, None, opts)
@@ -58,14 +61,18 @@ class LambdaProcessorComponent(pulumi.ComponentResource):
             opts=child_opts,
         )
 
-        # Lambda Function
-        # Note: Actual code deployment handled via CI/CD or separate process
+        # Lambda Function (Docker image from ECR)
         self.function = aws.lambda_.Function(
             f"{name}-function",
             name=name,
             role=role_arn,
-            runtime="python3.11",
-            handler="backend.core.document_processing.entrypoint.handler",
+            # Use container image instead of ZIP deployment
+            image_uri=ecr_image_uri,
+            image_config=aws.lambda_.ImageConfigArgs(
+                # Handler is embedded in Dockerfile CMD
+                # but we can override if needed
+                command=["backend.core.document_processing.lambda_handler.handler"],
+            ),
             memory_size=config.lambda_memory,
             timeout=config.lambda_timeout,
             vpc_config=aws.lambda_.FunctionVpcConfigArgs(
@@ -78,15 +85,12 @@ class LambdaProcessorComponent(pulumi.ComponentResource):
                     "DOCUMENTS_BUCKET": documents_bucket_name,
                     "VECTORS_BUCKET": vectors_bucket_name,
                     "SECRETS_ARN": secrets_arn,
+                    "DATABASE_URL": database_url,
+                    "AWS_REGION": aws_region,
                     "LOG_LEVEL": "INFO",
                 },
             ),
-            # Placeholder code - real code deployed via CI/CD
-            code=pulumi.AssetArchive({
-                "index.py": pulumi.StringAsset(
-                    "def handler(event, context): return {'statusCode': 200}"
-                ),
-            }),
+            package_type="Image",  # Specify container image type
             tags=create_tags(environment, f"{name}-function"),
             opts=pulumi.ResourceOptions(
                 parent=self,

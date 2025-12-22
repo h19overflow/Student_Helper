@@ -1,4 +1,3 @@
-# Docker image for Lambda document processing pipeline.
 #
 # Uses AWS Lambda Python 3.11 base image with:
 # - Core dependencies (Pydantic, LangChain)

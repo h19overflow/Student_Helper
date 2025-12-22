@@ -11,9 +11,8 @@ import logging
 from uuid import UUID
 import uuid as uuid_lib
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from backend.api.deps import get_document_service, get_job_service, get_s3_document_client
-from backend.api.routers.router_utils.document_utils import process_document_from_s3_background
 from backend.api.routers.router_utils.presigned_url_utils import (
     FilenameValidationError,
     generate_safe_s3_key,
@@ -105,7 +104,6 @@ async def create_presigned_upload_url(
 async def document_uploaded_to_s3(
     session_id: UUID,
     notification: DocumentUploadedNotification,
-    background_tasks: BackgroundTasks,
     job_service: JobService = Depends(get_job_service),
 ) -> dict:
     """
@@ -151,19 +149,11 @@ async def document_uploaded_to_s3(
             extra={"job_id": str(job_id), "task_id": task_id, "s3_key": notification.s3_key},
         )
 
-        # Add background task for processing
-        background_tasks.add_task(
-            process_document_from_s3_background,
-            job_id=job_id,
-            s3_key=notification.s3_key,
-            session_id=session_id,
-            document_name=notification.filename,
-        )
-
+        # S3 event → SQS → Lambda handles processing automatically
         return {
             "jobId": str(job_id),
             "status": JobStatus.PENDING.value,
-            "message": "Document processing started. Poll /jobs/{jobId} for status.",
+            "message": "Document queued for processing. Poll /jobs/{jobId} for status.",
         }
 
     except Exception as e:

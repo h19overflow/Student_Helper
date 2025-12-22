@@ -54,6 +54,7 @@ class S3BucketsComponent(pulumi.ComponentResource):
         name: str,
         environment: str,
         namer: ResourceNamer,
+        sqs_queue_arn: pulumi.Input[str] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("custom:storage:S3Buckets", name, None, opts)
@@ -103,6 +104,28 @@ class S3BucketsComponent(pulumi.ComponentResource):
             ],
             opts=child_opts,
         )
+
+        # S3 Event Notification to SQS (connects S3 uploads to Lambda processing)
+        if sqs_queue_arn:
+            aws.s3.BucketNotification(
+                f"{name}-documents-to-sqs",
+                bucket=self.documents_bucket.id,
+                queue_notifications=[
+                    aws.s3.BucketNotificationQueueNotificationArgs(
+                        events=["s3:ObjectCreated:*"],
+                        queue_arn=sqs_queue_arn,
+                        filter_key=aws.s3.BucketNotificationQueueNotificationFilterKeyArgs(
+                            filter_rules=[
+                                aws.s3.BucketNotificationQueueNotificationFilterKeyFilterRuleArgs(
+                                    name="prefix",
+                                    value="documents/",
+                                )
+                            ]
+                        ),
+                    )
+                ],
+                opts=child_opts,
+            )
 
         # S3 Vectors bucket for embeddings storage
         self.vectors_bucket = aws_native.s3vectors.VectorBucket(

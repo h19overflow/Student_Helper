@@ -19,7 +19,9 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from typing import Any, Dict
+from urllib.parse import unquote
 
 from .models.sqs_event import SQSEventSchema
 from .entrypoint import DocumentPipeline
@@ -40,6 +42,113 @@ class DocumentProcessingError(Exception):
     """Raised when document processing fails."""
 
     pass
+
+
+def parse_s3_event_record(record: Dict[str, Any]) -> SQSEventSchema:
+    """
+    Parse S3 event from SQS record.
+
+    S3 sends event notifications to SQS with this structure:
+    {
+        "Records": [{
+            "eventSource": "aws:s3",
+            "s3": {
+                "bucket": {"name": "bucket-name"},
+                "object": {"key": "documents/session-id/filename.pdf", "size": 1024}
+            }
+        }]
+    }
+
+    Extracts session_id from S3 key path (documents/{session_id}/{filename}).
+
+    Args:
+        record: SQS record containing S3 event
+
+    Returns:
+        SQSEventSchema: Standardized document metadata
+
+    Raises:
+        MessageParseError: Invalid S3 event format or missing fields
+    """
+    try:
+        # Extract S3 event from message body
+        message_body = record.get("body")
+        if not message_body:
+            raise ValueError("Empty message body")
+
+        s3_event = json.loads(message_body)
+
+        # Handle wrapped S3 events (from S3 → SQS notification)
+        if "Records" in s3_event:
+            # S3 event wrapped in Records array
+            s3_records = s3_event.get("Records", [])
+            if not s3_records:
+                raise ValueError("No S3 records in event")
+            s3_record = s3_records[0]
+        else:
+            # Direct S3 record
+            s3_record = s3_event
+
+        # Extract bucket and object info
+        if s3_record.get("eventSource") != "aws:s3":
+            raise ValueError(f"Invalid event source: {s3_record.get('eventSource')}")
+
+        s3_info = s3_record.get("s3", {})
+        object_info = s3_info.get("object", {})
+
+        s3_key = unquote(object_info.get("key", ""))  # URL-decode the key
+        file_size = object_info.get("size", 0)
+
+        if not s3_key:
+            raise ValueError("Missing S3 object key")
+
+        # Extract session_id and filename from S3 key path
+        # Expected format: documents/{session_id}/{filename}
+        parts = s3_key.split("/")
+        if len(parts) < 3 or parts[0] != "documents":
+            raise ValueError(f"Invalid S3 key format: {s3_key}")
+
+        session_id = parts[1]
+        filename = "/".join(parts[2:])  # Handle filenames with slashes
+
+        # Validate session_id is a valid UUID
+        try:
+            session_uuid = uuid.UUID(session_id)
+        except ValueError as e:
+            raise ValueError(f"Invalid session ID format: {session_id}") from e
+
+        # Generate document_id (S3 events don't contain this)
+        document_id = uuid.uuid4()
+
+        message = SQSEventSchema(
+            document_id=document_id,
+            session_id=session_uuid,
+            s3_key=s3_key,
+            filename=filename,
+            file_size_bytes=file_size,
+        )
+
+        logger.info(
+            "%s:parse_s3_event_record - Parsed S3 event",
+            __name__,
+            extra={
+                "message_id": record.get("messageId"),
+                "document_id": str(message.document_id),
+                "session_id": str(message.session_id),
+                "s3_key": s3_key,
+            },
+        )
+        return message
+
+    except json.JSONDecodeError as e:
+        logger.error("%s:parse_s3_event_record - JSONDecodeError: %s", __name__, e)
+        raise MessageParseError(f"Invalid JSON in message body: {e}") from e
+    except ValueError as e:
+        logger.error("%s:parse_s3_event_record - ValueError: %s", __name__, e)
+        raise MessageParseError(f"Invalid S3 event format: {e}") from e
+    except Exception as e:
+        logger.error("%s:parse_s3_event_record - %s: %s", __name__, type(e).__name__, e)
+        raise MessageParseError(f"Failed to parse S3 event: {e}") from e
 
 
 def parse_sqs_record(record: Dict[str, Any]) -> SQSEventSchema:
@@ -64,7 +173,8 @@ def parse_sqs_record(record: Dict[str, Any]) -> SQSEventSchema:
         # Parse JSON and validate against schema
         message = SQSEventSchema.model_validate_json(message_body)
         logger.info(
-            f"{__name__}:parse_sqs_record - Parsed message",
+            "%s:parse_sqs_record - Parsed message",
+            __name__,
             extra={
                 "message_id": record.get("messageId"),
                 "document_id": str(message.document_id),
@@ -73,13 +183,13 @@ def parse_sqs_record(record: Dict[str, Any]) -> SQSEventSchema:
         return message
 
     except json.JSONDecodeError as e:
-        logger.error(f"{__name__}:parse_sqs_record - JSONDecodeError: {e}")
+        logger.error("%s:parse_sqs_record - JSONDecodeError: %s", __name__, e)
         raise MessageParseError(f"Invalid JSON in message body: {e}") from e
     except ValueError as e:
-        logger.error(f"{__name__}:parse_sqs_record - ValueError: {e}")
+        logger.error("%s:parse_sqs_record - ValueError: %s", __name__, e)
         raise MessageParseError(f"Invalid message schema: {e}") from e
     except Exception as e:
-        logger.error(f"{__name__}:parse_sqs_record - {type(e).__name__}: {e}")
+        logger.error("%s:parse_sqs_record - %s: %s", __name__, type(e).__name__, e)
         raise MessageParseError(f"Failed to parse message: {e}") from e
 
 
@@ -113,7 +223,7 @@ def validate_environment() -> Dict[str, str]:
     if missing:
         raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
 
-    logger.info(f"{__name__}:validate_environment - Environment validated")
+    logger.info("%s:validate_environment - Environment validated", __name__)
     return env_config
 
 
@@ -157,7 +267,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         Dict with statusCode and results array
     """
     logger.info(
-        f"{__name__}:handler - Received SQS event",
+        "handler - Received SQS event",
         extra={"record_count": len(event.get("Records", []))},
     )
 
@@ -165,7 +275,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         _env_config = validate_environment()  # noqa: F841
     except ValueError as e:
-        logger.error(f"{__name__}:handler - ValueError: {e}")
+        logger.error("%s:handler - ValueError: %s", __name__, e)
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e), "results": []}),
@@ -178,12 +288,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     for record in event.get("Records", []):
         message_id = record.get("messageId")
         try:
-            # Parse and validate SQS message
-            message = parse_sqs_record(record)
+            # Parse S3 event from SQS message
+            message = parse_s3_event_record(record)
             document_id = str(message.document_id)
 
             logger.info(
-                f"{__name__}:handler - Processing document",
+                "%s:handler - Processing document",
+                __name__,
                 extra={
                     "document_id": document_id,
                     "session_id": str(message.session_id),
@@ -196,7 +307,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 asyncio.run(_update_status_processing(document_id))
             except Exception as e:
                 logger.error(
-                    f"{__name__}:handler - Failed to update status to PROCESSING: {type(e).__name__}: {e}",
+                    "%s:handler - Failed to update status to PROCESSING: %s: %s",
+                    __name__,
+                    type(e).__name__,
+                    e,
                     extra={"document_id": document_id},
                 )
                 raise DocumentProcessingError(f"Failed to update status to PROCESSING: {e}") from e
@@ -216,7 +330,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 )
 
                 logger.info(
-                    f"{__name__}:handler - Document processed successfully",
+                    "%s:handler - Document processed successfully",
+                    __name__,
                     extra={
                         "document_id": document_id,
                         "chunk_count": pipeline_result.chunk_count,
@@ -226,7 +341,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             except Exception as e:
                 logger.error(
-                    f"{__name__}:handler - {type(e).__name__}: {e}",
+                    "%s:handler - %s: %s",
+                    __name__,
+                    type(e).__name__,
+                    e,
                     extra={"document_id": document_id},
                 )
                 raise DocumentProcessingError(f"Pipeline processing failed: {e}") from e
@@ -236,7 +354,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 asyncio.run(_update_status_completed(document_id))
             except Exception as e:
                 logger.error(
-                    f"{__name__}:handler - Failed to update status to COMPLETED: {type(e).__name__}: {e}",
+                    "%s:handler - Failed to update status to COMPLETED: %s: %s",
+                    __name__,
+                    type(e).__name__,
+                    e,
                     extra={"document_id": document_id},
                 )
                 raise DocumentProcessingError(f"Failed to update status to COMPLETED: {e}") from e
@@ -252,7 +373,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
 
         except MessageParseError as e:
-            logger.warning(f"{__name__}:handler - MessageParseError: {e}")
+            logger.warning("%s:handler - MessageParseError: %s", __name__, e)
             failed_count += 1
             results.append(
                 {
@@ -265,7 +386,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Continue to next record, don't fail batch
 
         except DocumentProcessingError as e:
-            logger.error(f"{__name__}:handler - DocumentProcessingError: {e}")
+            logger.error("%s:handler - DocumentProcessingError: %s", __name__, e)
             failed_count += 1
 
             # Update status to FAILED in database
@@ -275,7 +396,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     asyncio.run(_update_status_failed(str(message.document_id), str(e)))
             except Exception as db_error:
                 logger.error(
-                    f"{__name__}:handler - Failed to update status to FAILED: {type(db_error).__name__}: {db_error}"
+                    "%s:handler - Failed to update status to FAILED: %s: %s",
+                    __name__,
+                    type(db_error).__name__,
+                    db_error,
                 )
 
             results.append(
@@ -288,7 +412,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
 
         except Exception as e:
-            logger.error(f"{__name__}:handler - {type(e).__name__}: {e}")
+            logger.error("%s:handler - %s: %s", __name__, type(e).__name__, e)
             failed_count += 1
             results.append(
                 {
@@ -302,7 +426,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Return 200 even with partial failures (Lambda won't retry failed messages)
     status_code = 200 if failed_count == 0 else 206
     logger.info(
-        f"{__name__}:handler - Processing complete",
+        "%s:handler - Processing complete",
+        __name__,
         extra={"success_count": len(results) - failed_count, "failed_count": failed_count},
     )
 

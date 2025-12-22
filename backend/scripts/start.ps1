@@ -10,6 +10,12 @@
 
 Write-Host "Starting Student Helper development servers..." -ForegroundColor Green
 
+# Get project root (2 levels up from script location)
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
+
+Write-Host "Project root: $projectRoot" -ForegroundColor Gray
+
 # Find Python executable
 try {
     $pythonPath = (Get-Command python -ErrorAction Stop).Source
@@ -32,14 +38,14 @@ try {
 $backendJob = Start-Process pwsh -ArgumentList @(
     "-NoExit",
     "-Command",
-    "Write-Host 'Starting Backend Server...' -ForegroundColor Cyan; & '$pythonPath' -m uvicorn backend.api.main:app --reload"
+    "cd '$projectRoot'; Write-Host 'Starting Backend Server...' -ForegroundColor Cyan; & '$pythonPath' -m uvicorn backend.api.main:app --reload"
 ) -PassThru
 
 # Start frontend server in a new window
 $frontendJob = Start-Process pwsh -ArgumentList @(
     "-NoExit",
     "-Command",
-    "Write-Host 'Starting Frontend Server...' -ForegroundColor Cyan; cd study-buddy-ai; & '$npmPath' run dev"
+    "cd '$projectRoot'; Write-Host 'Starting Frontend Server...' -ForegroundColor Cyan; cd study-buddy-ai; & '$npmPath' run dev"
 ) -PassThru
 
 Write-Host "`nServers started!" -ForegroundColor Green

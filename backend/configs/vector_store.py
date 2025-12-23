@@ -22,17 +22,17 @@ class VectorStoreSettings(BaseSettings):
     aws_region: str = Field(default="ap-southeast-2", description="AWS region for S3 Vectors")
     embedding_region: str = Field(
         default="us-east-1",
-        description="AWS region for Bedrock embeddings (us-east-1 has higher quota)",
+        description="Unused - kept for backwards compatibility",
     )
     index_name: str = Field(default="documents", description="S3 Vectors index name")
 
     embedding_model: str = Field(
-        default="amazon.titan-embed-text-v2:0",
-        description="Amazon Bedrock embedding model ID",
+        default="text-embedding-004",
+        description="Google Gemini embedding model ID",
     )
     embedding_dimension: int = Field(
-        default=1536,
-        description="Embedding vector dimension (1536 for Amazon Titan v2)",
+        default=1024,
+        description="Embedding vector dimension (1024 for Google text-embedding-004)",
     )
 
     top_k: int = Field(default=5, description="Number of top results to retrieve")

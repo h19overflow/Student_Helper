@@ -3,24 +3,18 @@ S3 Vectors store for production retrieval.
 
 Provides retrieval interface using Amazon S3 Vectors with session filtering.
 Supports session-isolated search and hybrid retrieval preparation.
-Includes exponential backoff retry for Bedrock throttling.
-Uses LRU cache for embeddings to reduce API calls.
+Uses Google Gemini embeddings (1024-dimensional) for vector generation.
 
-Dependencies: langchain_aws, backend.boundary.vdb.vector_schemas, tenacity, boto3
+Dependencies: langchain_google_genai, langchain_aws, backend.boundary.vdb.vector_schemas, tenacity
 System role: Production vector store (S3 Vectors)
 """
 
-import hashlib
 import logging
-from functools import lru_cache
 from typing import Any
 
-import boto3
-from botocore.config import Config
 from botocore.exceptions import ClientError
-from langchain_aws import BedrockEmbeddings
 from langchain_aws.vectorstores import AmazonS3Vectors
-from langchain_core.embeddings import Embeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -35,100 +29,6 @@ from backend.boundary.vdb.vector_schemas import (
 
 logger = logging.getLogger(__name__)
 
-# Module-level embedding cache (persists across requests)
-_embedding_cache: dict[str, list[float]] = {}
-_CACHE_MAX_SIZE = 1000
-
-
-def _get_cache_key(text: str) -> str:
-    """Create a hash key for caching embeddings."""
-    return hashlib.sha256(text.encode()).hexdigest()[:16]
-
-
-class CachedBedrockEmbeddings(Embeddings):
-    """
-    Wrapper around BedrockEmbeddings with LRU caching.
-
-    Caches embedding results to avoid repeated API calls for identical queries.
-    Inherits from LangChain's Embeddings base class for compatibility with FAISS and other vector stores.
-    """
-
-    def __init__(self, embeddings: BedrockEmbeddings) -> None:
-        logger.info(f"{__name__}:CachedBedrockEmbeddings.__init__ - Initializing with embeddings type={type(embeddings).__name__}")
-        self._embeddings = embeddings
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed documents with caching."""
-        logger.info(f"{__name__}:embed_documents - START: Caching {len(texts)} texts")
-        results = []
-        uncached_texts = []
-        uncached_indices = []
-
-        # Check cache first
-        for i, text in enumerate(texts):
-            key = _get_cache_key(text)
-            if key in _embedding_cache:
-                results.append(_embedding_cache[key])
-                logger.debug(f"{__name__}:embed_documents - Cache HIT for text hash {key}")
-            else:
-                results.append(None)  # Placeholder
-                uncached_texts.append(text)
-                uncached_indices.append(i)
-
-        # Fetch uncached embeddings
-        if uncached_texts:
-            logger.info(f"{__name__}:embed_documents - Cache MISS: fetching {len(uncached_texts)} embeddings from base embeddings")
-            try:
-                new_embeddings = self._embeddings.embed_documents(uncached_texts)
-                logger.info(f"{__name__}:embed_documents - Received {len(new_embeddings)} embeddings from base")
-
-                # Store in cache and results
-                for idx, text, embedding in zip(uncached_indices, uncached_texts, new_embeddings, strict=True):
-                    key = _get_cache_key(text)
-                    if len(_embedding_cache) < _CACHE_MAX_SIZE:
-                        _embedding_cache[key] = embedding
-                    results[idx] = embedding
-            except Exception as e:
-                logger.error(f"{__name__}:embed_documents - FAILED to embed documents: {type(e).__name__}: {e}", exc_info=True)
-                raise
-        else:
-            logger.info(f"{__name__}:embed_documents - All {len(texts)} embeddings from cache")
-
-        logger.info(f"{__name__}:embed_documents - SUCCESS: Returning {len(results)} embeddings")
-        return results
-
-    def embed_query(self, text: str) -> list[float]:
-        """Embed a single query with caching."""
-        logger.info(f"{__name__}:embed_query - START: Query text_len={len(text)}")
-        key = _get_cache_key(text)
-
-        if key in _embedding_cache:
-            logger.info(f"{__name__}:embed_query - Cache HIT for query (key={key[:8]}...)")
-            return _embedding_cache[key]
-
-        logger.info(f"{__name__}:embed_query - Cache MISS: calling Bedrock API")
-        try:
-            embedding = self._embeddings.embed_query(text)
-            logger.info(f"{__name__}:embed_query - Received embedding from Bedrock (dim={len(embedding)})")
-
-            if len(_embedding_cache) < _CACHE_MAX_SIZE:
-                _embedding_cache[key] = embedding
-                logger.info(f"{__name__}:embed_query - Cached embedding (cache_size={len(_embedding_cache)})")
-
-            return embedding
-        except Exception as e:
-            logger.error(f"{__name__}:embed_query - FAILED to embed query: {type(e).__name__}: {e}", exc_info=True)
-            raise
-
-
-def _is_throttling_error(exception: BaseException) -> bool:
-    """Check if exception is a Bedrock throttling error."""
-    if isinstance(exception, ClientError):
-        error_code = exception.response.get("Error", {}).get("Code", "")
-        return error_code in ("ThrottlingException", "TooManyRequestsException")
-    # Also catch throttling wrapped in other exceptions
-    return "ThrottlingException" in str(exception) or "Too many requests" in str(exception)
-
 
 class S3VectorsStore:
     """
@@ -136,6 +36,7 @@ class S3VectorsStore:
 
     Wraps AmazonS3Vectors with session filtering for multi-tenant isolation.
     Supports similarity search, MMR search, and retriever creation.
+    Uses Google Gemini embeddings (1024-dimensional) to avoid Bedrock throttling.
     """
 
     def __init__(
@@ -144,49 +45,30 @@ class S3VectorsStore:
         index_name: str = "documents",
         region: str = "ap-southeast-2",
         embedding_region: str = "us-east-1",
-        embedding_model_id: str = "amazon.titan-embed-text-v2:0",
+        embedding_model_id: str = "text-embedding-004",
     ) -> None:
         """
-        Initialize S3 Vectors store with Bedrock embeddings.
+        Initialize S3 Vectors store with Google Gemini embeddings.
 
         Args:
             vectors_bucket: S3 Vectors bucket name
             index_name: Index name within the bucket
             region: AWS region for S3 Vectors
-            embedding_region: AWS region for Bedrock embeddings (us-east-1 has higher quota)
-            embedding_model_id: Bedrock embedding model ID
+            embedding_region: Unused - kept for backwards compatibility
+            embedding_model_id: Google embedding model ID (default: text-embedding-004)
         """
         self._vectors_bucket = vectors_bucket
         self._index_name = index_name
         self._region = region
-        self._embedding_region = embedding_region
-
-        # Create boto3 client with NO internal retries
-        # This lets our tenacity retry control all backoff behavior
-        no_retry_config = Config(
-            retries={"max_attempts": 0, "mode": "standard"},
-            read_timeout=30,
-            connect_timeout=10,
-        )
-        bedrock_client = boto3.client(
-            "bedrock-runtime",
-            region_name=embedding_region,  # Use separate region for embeddings
-            config=no_retry_config,
-        )
 
         logger.info(
-            f"{__name__}:__init__ - Creating BedrockEmbeddings in {embedding_region} (S3 Vectors in {region})"
+            f"{__name__}:__init__ - Creating GoogleGenerativeAIEmbeddings with model {embedding_model_id}"
         )
 
-        base_embeddings = BedrockEmbeddings(
-            model_id=embedding_model_id,
-            region_name=embedding_region,  # Use separate region for embeddings
-            client=bedrock_client,  # Use our no-retry client
-        )
-
-        # Wrap with cache to reduce API calls
-        self._embeddings = CachedBedrockEmbeddings(base_embeddings)
-        logger.info(f"{__name__}:__init__ - Using CachedBedrockEmbeddings wrapper")
+        # Use Google Gemini embeddings (dimensionality passed at embedding time, not init)
+        # This avoids Bedrock throttling and matches S3 Vectors 1024-dimensional index
+        self._embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model_id)
+        logger.info(f"{__name__}:__init__ - GoogleGenerativeAIEmbeddings initialized")
 
         self._vector_store = AmazonS3Vectors(
             vector_bucket_name=vectors_bucket,
@@ -227,7 +109,7 @@ class S3VectorsStore:
         """
         Search for similar documents with optional filtering.
 
-        Includes exponential backoff retry for Bedrock throttling errors.
+        Includes exponential backoff retry for API transient failures.
 
         Args:
             query: Search query text
@@ -239,7 +121,7 @@ class S3VectorsStore:
             list[VectorSearchResult]: Search results with scores and metadata
 
         Raises:
-            ClientError: After max retries exhausted for throttling
+            ClientError: After max retries exhausted
         """
         filter_dict: dict[str, Any] = {}
         if session_id:
@@ -281,10 +163,7 @@ class S3VectorsStore:
             return search_results
 
         except ClientError as e:
-            if _is_throttling_error(e):
-                logger.error(f"{__name__}:similarity_search - ThrottlingException: Max retries exhausted")
-            else:
-                logger.error(f"{__name__}:similarity_search - {type(e).__name__}: {e}")
+            logger.error(f"{__name__}:similarity_search - ClientError after retries: {e}")
             raise
         except Exception as e:
             logger.error(f"{__name__}:similarity_search - {type(e).__name__}: {e}")

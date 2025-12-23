@@ -22,30 +22,18 @@ class DocumentPipelineSettings(BaseSettings):
         extra="ignore",
     )
 
-    # Google API settings (DEPRECATED - use Bedrock instead)
-    google_api_key: str = Field(
-        default="",
-        description="Google API key for Gemini embeddings (deprecated)",
-    )
-
-    # Embedding settings (DEPRECATED - use Bedrock instead)
-    embedding_model: str = Field(
-        default="models/gemini-embedding-001",
-        description="Google Gemini embedding model name (deprecated)",
-    )
-
-    # AWS Bedrock settings
+    # AWS S3 Vectors bucket region
     bedrock_region: str = Field(
         default="ap-southeast-2",
         description="AWS region for S3 Vectors bucket",
     )
     embedding_region: str = Field(
         default="us-east-1",
-        description="AWS region for Bedrock embeddings (us-east-1 has higher quota)",
+        description="Unused - kept for backwards compatibility",
     )
     embedding_model_id: str = Field(
-        default="amazon.titan-embed-text-v2:0",
-        description="Amazon Titan Embeddings v2 model ID (1024 dimensions)",
+        default="text-embedding-004",
+        description="Google Gemini embedding model ID (1024 dimensions)",
     )
 
     # Chunking settings

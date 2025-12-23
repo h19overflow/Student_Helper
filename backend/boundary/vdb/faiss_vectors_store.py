@@ -3,9 +3,9 @@ FAISS vector store for local development.
 
 Provides same interface as S3VectorsStore but uses local FAISS index.
 Supports session filtering and metadata-based retrieval.
-Uses Bedrock embeddings (cached) for consistency with production.
+Uses Google Gemini embeddings for consistency with production.
 
-Dependencies: faiss-cpu, langchain_aws, backend.boundary.vdb.vector_schemas
+Dependencies: faiss-cpu, langchain_google_genai, backend.boundary.vdb.vector_schemas
 System role: Local vector store for development RAG
 """
 
@@ -13,16 +13,13 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from langchain_aws import BedrockEmbeddings
 from langchain_community.vectorstores import FAISS
-from botocore.config import Config
-import boto3
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from backend.boundary.vdb.vector_schemas import (
     VectorMetadata,
     VectorSearchResult,
 )
-from backend.boundary.vdb.s3_vectors_store import CachedBedrockEmbeddings
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +34,7 @@ class FAISSVectorsStore:
 
     Wraps LangChain FAISS with session filtering and metadata support.
     Persists index to disk for reuse across runs.
-    Uses same CachedBedrockEmbeddings as production for consistency.
+    Uses Google Gemini embeddings for consistency with production.
     """
 
     def __init__(
@@ -45,46 +42,28 @@ class FAISSVectorsStore:
         index_name: str = "local-dev",
         region: str = "ap-southeast-2",
         embedding_region: str = "us-east-1",
-        embedding_model_id: str = "amazon.titan-embed-text-v2:0",
+        embedding_model_id: str = "text-embedding-004",
     ) -> None:
         """
-        Initialize FAISS vector store with Bedrock embeddings.
+        Initialize FAISS vector store with Google Gemini embeddings.
 
         Args:
             index_name: Local index name
             region: AWS region (used for consistency, not needed for FAISS)
-            embedding_region: AWS region for Bedrock embeddings
-            embedding_model_id: Bedrock embedding model ID
+            embedding_region: Unused - kept for backwards compatibility
+            embedding_model_id: Google embedding model ID (default: text-embedding-004)
         """
         self._index_name = index_name
         self._region = region
-        self._embedding_region = embedding_region
-
-        # Create boto3 client with no internal retries
-        no_retry_config = Config(
-            retries={"max_attempts": 0, "mode": "standard"},
-            read_timeout=30,
-            connect_timeout=10,
-        )
-        bedrock_client = boto3.client(
-            "bedrock-runtime",
-            region_name=embedding_region,
-            config=no_retry_config,
-        )
 
         logger.info(
-            f"{__name__}:__init__ - Creating BedrockEmbeddings in {embedding_region} for FAISS"
+            f"{__name__}:__init__ - Creating GoogleGenerativeAIEmbeddings with model {embedding_model_id}"
         )
 
-        base_embeddings = BedrockEmbeddings(
-            model_id=embedding_model_id,
-            region_name=embedding_region,
-            client=bedrock_client,
-        )
-
-        # Wrap with cache to reduce API calls
-        self._embeddings = CachedBedrockEmbeddings(base_embeddings)
-        logger.info(f"{__name__}:__init__ - Using CachedBedrockEmbeddings wrapper")
+        # Use Google Gemini embeddings (dimensionality passed at embedding time, not init)
+        # This matches the S3 Vectors index dimension
+        self._embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model_id)
+        logger.info(f"{__name__}:__init__ - GoogleGenerativeAIEmbeddings initialized")
 
         # Load or initialize FAISS index
         self._vector_store = self._load_or_create_index()

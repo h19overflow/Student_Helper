@@ -3,17 +3,18 @@ S3 Vectors upload task.
 
 Uploads document chunks to Amazon S3 Vectors with metadata for similarity search.
 Uses langchain-aws AmazonS3Vectors for LangChain integration.
+Uses Google Gemini embeddings (1024-dimensional) for vector generation.
 
-Dependencies: langchain_aws, langchain_core
+Dependencies: langchain_aws, langchain_google_genai, langchain_core
 System role: Final stage of document ingestion pipeline
 """
 
 import hashlib
 import logging
 
-from langchain_aws import BedrockEmbeddings
 from langchain_aws.vectorstores import AmazonS3Vectors
 from langchain_core.documents import Document
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +36,17 @@ class VectorStoreTask:
         index_name: str = "documents",
         region: str = "ap-southeast-2",
         embedding_region: str = "us-east-1",
-        embedding_model_id: str = "amazon.titan-embed-text-v2:0",
+        embedding_model_id: str = "text-embedding-004",
     ) -> None:
         """
-        Initialize vector store task with S3 Vectors and Bedrock embeddings.
+        Initialize vector store task with S3 Vectors and Google Gemini embeddings.
 
         Args:
             vectors_bucket: S3 Vectors bucket name
             index_name: Index name within the bucket
             region: AWS region for S3 Vectors
-            embedding_region: AWS region for Bedrock embeddings (us-east-1 has higher quota)
-            embedding_model_id: Bedrock embedding model ID
+            embedding_region: Unused - kept for backwards compatibility
+            embedding_model_id: Google embedding model ID (default: text-embedding-004)
 
         Raises:
             ValueError: When vectors_bucket or index_name is empty
@@ -58,12 +59,10 @@ class VectorStoreTask:
         self.vectors_bucket = vectors_bucket
         self.index_name = index_name
         self.region = region
-        self.embedding_region = embedding_region
 
-        self._embeddings = BedrockEmbeddings(
-            model_id=embedding_model_id,
-            region_name=embedding_region,
-        )
+        # Use Google Gemini embeddings (dimensionality passed at embedding time, not init)
+        # This matches the S3 Vectors index dimension and avoids Bedrock throttling
+        self._embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model_id)
         self._vector_store: AmazonS3Vectors | None = None
 
     def _get_vector_store(self) -> AmazonS3Vectors:
@@ -174,6 +173,11 @@ class VectorStoreTask:
         try:
             vector_store = self._get_vector_store()
 
+            # Embed documents with 1024-dimensional output for S3 Vectors compatibility
+            texts = [doc.page_content for doc in documents]
+            embeddings = self._embeddings.embed_documents(texts, output_dimensionality=1024)
+
+            # Add documents with pre-computed embeddings
             ids = vector_store.add_documents(
                 documents=documents,
                 ids=chunk_ids,

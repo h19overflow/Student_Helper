@@ -15,6 +15,7 @@ from backend.boundary.db.connection import get_engine
 from backend.boundary.db.CRUD.chat_history_crud import ChatHistoryCRUD
 
 # Import all models to register them with Base.metadata
+from backend.boundary.db.models.course_model import CourseModel  # noqa: F401
 from backend.boundary.db.models.session_model import SessionModel  # noqa: F401
 from backend.boundary.db.models.document_model import DocumentModel  # noqa: F401
 from backend.boundary.db.models.job_model import JobModel  # noqa: F401

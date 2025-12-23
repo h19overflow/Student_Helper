@@ -57,16 +57,32 @@ async def create_course(
         HTTPException(500): Creation failed
     """
     try:
+        logger.info(
+            "Creating new course",
+            extra={"course_name": request.name, "has_description": bool(request.description)}
+        )
         course_id = await course_service.create_course(
             name=request.name,
             description=request.description,
             metadata=request.metadata or {}
         )
         course_data = await course_service.get_course(course_id)
+        logger.info(
+            "Course created successfully",
+            extra={"course_id": str(course_id), "course_name": request.name}
+        )
         return CourseResponse(**course_data)
     except ValueError as e:
+        logger.warning(
+            "Invalid course creation request",
+            extra={"error": str(e), "course_name": request.name}
+        )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(
+            "Failed to create course",
+            extra={"error": str(e), "course_name": request.name}
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Course creation failed: {str(e)}"
@@ -94,9 +110,21 @@ async def list_courses(
         HTTPException(500): Retrieval failed
     """
     try:
+        logger.info(
+            "Listing courses",
+            extra={"limit": limit, "offset": offset}
+        )
         courses = await course_service.get_all_courses(limit=limit, offset=offset)
+        logger.info(
+            "Courses retrieved successfully",
+            extra={"count": len(courses), "limit": limit, "offset": offset}
+        )
         return [CourseResponse(**course) for course in courses]
     except Exception as e:
+        logger.exception(
+            "Failed to retrieve courses",
+            extra={"error": str(e), "limit": limit, "offset": offset}
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve courses: {str(e)}"
@@ -123,11 +151,27 @@ async def get_course(
         HTTPException(500): Retrieval failed
     """
     try:
+        logger.info(
+            "Fetching course",
+            extra={"course_id": str(course_id)}
+        )
         course_data = await course_service.get_course(course_id)
+        logger.info(
+            "Course retrieved successfully",
+            extra={"course_id": str(course_id), "course_name": course_data.get("name")}
+        )
         return CourseResponse(**course_data)
     except ValueError as e:
+        logger.warning(
+            "Course not found",
+            extra={"course_id": str(course_id), "error": str(e)}
+        )
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(
+            "Failed to retrieve course",
+            extra={"course_id": str(course_id), "error": str(e)}
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Course retrieval failed: {str(e)}"
@@ -157,15 +201,35 @@ async def update_course(
         HTTPException(500): Update failed
     """
     try:
+        logger.info(
+            "Updating course",
+            extra={
+                "course_id": str(course_id),
+                "updating_name": request.name is not None,
+                "updating_description": request.description is not None
+            }
+        )
         course_data = await course_service.update_course(
             course_id=course_id,
             name=request.name,
             description=request.description
         )
+        logger.info(
+            "Course updated successfully",
+            extra={"course_id": str(course_id), "course_name": course_data.get("name")}
+        )
         return CourseResponse(**course_data)
     except ValueError as e:
+        logger.warning(
+            "Course not found for update",
+            extra={"course_id": str(course_id), "error": str(e)}
+        )
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(
+            "Failed to update course",
+            extra={"course_id": str(course_id), "error": str(e)}
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Course update failed: {str(e)}"
@@ -192,10 +256,26 @@ async def delete_course(
         HTTPException(500): Deletion failed
     """
     try:
+        logger.info(
+            "Deleting course",
+            extra={"course_id": str(course_id)}
+        )
         await course_service.delete_course(course_id)
+        logger.info(
+            "Course deleted successfully",
+            extra={"course_id": str(course_id)}
+        )
     except ValueError as e:
+        logger.warning(
+            "Course not found for deletion",
+            extra={"course_id": str(course_id), "error": str(e)}
+        )
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(
+            "Failed to delete course",
+            extra={"course_id": str(course_id), "error": str(e)}
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Course deletion failed: {str(e)}"
@@ -226,15 +306,31 @@ async def get_course_sessions(
         HTTPException(500): Retrieval failed
     """
     try:
+        logger.info(
+            "Fetching course sessions",
+            extra={"course_id": str(course_id), "limit": limit, "offset": offset}
+        )
         sessions = await course_service.get_course_sessions(
             course_id=course_id,
             limit=limit,
             offset=offset
         )
+        logger.info(
+            "Course sessions retrieved successfully",
+            extra={"course_id": str(course_id), "session_count": len(sessions), "limit": limit, "offset": offset}
+        )
         return [SessionResponse(**session) for session in sessions]
     except ValueError as e:
+        logger.warning(
+            "Course not found for sessions retrieval",
+            extra={"course_id": str(course_id), "error": str(e)}
+        )
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(
+            "Failed to retrieve course sessions",
+            extra={"course_id": str(course_id), "error": str(e), "limit": limit, "offset": offset}
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve course sessions: {str(e)}"
@@ -264,16 +360,32 @@ async def create_course_session(
         HTTPException(500): Creation failed
     """
     try:
+        logger.info(
+            "Creating session in course",
+            extra={"course_id": str(course_id), "has_metadata": bool(request.metadata)}
+        )
         metadata = request.metadata or {}
         session_id = await session_service.create_session(
             metadata=metadata,
             course_id=course_id
         )
         session_data = await session_service.get_session(session_id)
+        logger.info(
+            "Session created in course successfully",
+            extra={"course_id": str(course_id), "session_id": str(session_id)}
+        )
         return SessionResponse(**session_data)
     except ValueError as e:
+        logger.warning(
+            "Failed to create session in course (course not found or invalid)",
+            extra={"course_id": str(course_id), "error": str(e)}
+        )
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(
+            "Failed to create session in course",
+            extra={"course_id": str(course_id), "error": str(e)}
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Session creation failed: {str(e)}"

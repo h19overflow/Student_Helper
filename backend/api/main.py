@@ -62,12 +62,12 @@ def create_app() -> FastAPI:
     app.add_middleware(CorrelationMiddleware)
     app.add_middleware(LangfuseMiddleware)
 
-    # Register all routers
-    app.include_router(health_router)
-    app.include_router(sessions_router)
+    # Register all routers with /api/v1 prefix for versioning
+    app.include_router(health_router, prefix="/api/v1")
+    app.include_router(sessions_router, prefix="/api/v1")
     app.include_router(courses_router, prefix="/api/v1")
-    app.include_router(documents_router)
-    app.include_router(jobs_router)
+    app.include_router(documents_router, prefix="/api/v1")
+    app.include_router(jobs_router, prefix="/api/v1")
 
     return app
 

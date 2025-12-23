@@ -59,13 +59,13 @@ class CourseService:
             )
             logger.info(
                 "Course created",
-                extra={"course_id": str(course.id), "name": name}
+                extra={"course_id": str(course.id), "course_name": name}
             )
             return course.id
         except Exception as e:
             logger.error(
                 "Failed to create course",
-                extra={"error": str(e), "name": name}
+                extra={"error": str(e), "course_name": name}
             )
             raise
 

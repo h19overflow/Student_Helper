@@ -3,7 +3,13 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(move:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(rm -Force \"c:\\\\Users\\\\User\\\\Projects\\\\Practice_Makes_Perfect\\\\Student_Helper\\\\backend\\\\scripts\\\\build-lambda-image.ps1\")",
+      "Bash(rm:*)",
+      "Bash(dir:*)",
+      "Skill(frontend-design:frontend-design)",
+      "Bash(npm run type-check:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

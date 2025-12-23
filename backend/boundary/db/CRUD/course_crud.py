@@ -11,7 +11,7 @@ System role: Course persistence operations
 from typing import Sequence
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -99,11 +99,12 @@ class CourseCRUD(BaseCRUD[CourseModel]):
             offset: Number of sessions to skip
 
         Returns:
-            Sequence of SessionModels for the course
+            Sequence of SessionModels for the course, ordered by most recent first
         """
         stmt = (
             select(SessionModel)
             .where(SessionModel.course_id == course_id)
+            .order_by(desc(SessionModel.created_at))
             .offset(offset)
         )
         if limit is not None:

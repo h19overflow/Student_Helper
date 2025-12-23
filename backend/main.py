@@ -16,6 +16,7 @@ from backend.configs import get_settings
 from backend.api import api_router
 from backend.api.routers import (
     chat_router,
+    courses_router,
     documents_router,
     health_router,
     jobs_router,
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
 
     # Register individual routers
     app.include_router(chat_router, prefix="/api/v1")
+    app.include_router(courses_router, prefix="/api/v1")
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(jobs_router, prefix="/api/v1")
     app.include_router(sessions_router, prefix="/api/v1")

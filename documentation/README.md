@@ -2,18 +2,20 @@
 
 ## Student Helper Project Documentation
 
-**Last Updated:** 2025-12-18
+**Last Updated:** 2025-12-23
 
 ---
 
 ## 📖 How to Use This Documentation
 
-This documentation is organized into **4 main categories** by functionality:
+This documentation is organized into **6 main categories** by functionality:
 
 1.  **Architecture** - High-level system design and protocol analysis
 2.  **Networking** - VPC, Security Groups, and connectivity details
 3.  **Troubleshooting** - Post-mortems of major issues and fixes
 4.  **Implementation Guides** - Step-by-step guides for specific features
+5.  **Course Integration** - Course-session linking feature documentation
+6.  **Lambda Deployment** - Serverless document processing refactor
 
 ---
 
@@ -111,6 +113,39 @@ This documentation is organized into **4 main categories** by functionality:
 
 ---
 
+## 📚 05. Course Integration
+
+**Purpose:** Documentation for the course-session linking feature.
+
+| Document                                                                   | Description                                                      |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **[course_integration_plan/README.md](course_integration_plan/README.md)** | Course integration feature implementation plan and architecture. |
+
+**Key Topics:**
+
+- Database schema for courses
+- API endpoints for course management
+- Session-course linking
+
+---
+
+## λ 07. Lambda Deployment Refactor
+
+**Purpose:** Documentation for the S3→SQS→Lambda event-driven document processing architecture.
+
+| Document                                                                               | Description                                                    |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **[07_lambda_deployment_refactor/README.md](07_lambda_deployment_refactor/README.md)** | Lambda deployment refactoring and serverless architecture.     |
+
+**Key Topics:**
+
+- Event-driven document processing
+- SQS queue configuration
+- Lambda function deployment
+- ECR container image management
+
+---
+
 ## 🎯 Quick Reference
 
 ### For New Team Members
@@ -136,10 +171,11 @@ This documentation is organized into **4 main categories** by functionality:
 
 ## 📊 Documentation Statistics
 
-- **Total Documents:** 30+
+- **Total Documents:** 35+
 - **Total Debugging Time Documented:** ~12 hours
 - **Major Issues Resolved:** 3
 - **Architecture Layers Documented:** 6
+- **Features Documented:** Course Integration, Lambda Deployment, Visual Knowledge
 
 ---
 

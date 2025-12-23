@@ -225,7 +225,7 @@ Upload Event
   ↓
 2. Chunking (RecursiveCharacterTextSplitter) → Split with overlap
   ↓
-3. Embedding (Bedrock Titan v2) → 1536-dim vectors
+3. Embedding (Google Generative AI) → 1024-dim vectors
   ↓
 4. Vector Storage (S3 Vectors) → Index with metadata
   ↓
@@ -258,7 +258,7 @@ class PipelineResult(BaseModel):
 - Output: Split documents preserving metadata
 
 **EmbeddingTask** ([tasks/embedding_task.py](document_processing/tasks/embedding_task.py))
-- Model: Amazon Titan Embeddings v2 (1536-dim)
+- Model: Google Generative AI (1024-dim)
 - Input: Document chunks
 - Output: Chunk objects with embeddings
 

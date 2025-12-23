@@ -60,7 +60,7 @@ flowchart TB
         subgraph Storage["📁 S3 STORAGE"]
             S3Front["📄 S3 Frontend<br/>React SPA"]
             S3Docs["📑 S3 Documents<br/>PDF Uploads"]
-            S3Vec["🧮 S3 Vectors<br/>1536-dim Embeddings"]
+            S3Vec["🧮 S3 Vectors<br/>1024-dim Embeddings"]
         end
 
         subgraph Messaging["📬 MESSAGING"]
@@ -70,7 +70,8 @@ flowchart TB
     end
 
     subgraph External["☁️ AWS SERVICES (via VPC Endpoints)"]
-        Bedrock["🤖 Bedrock AI<br/>Claude | Titan"]
+        Bedrock["🤖 Bedrock AI<br/>Claude LLM"]
+        GoogleAI["🧠 Google AI<br/>Embeddings"]
         Secrets["🔐 Secrets Manager"]
     end
 
@@ -175,7 +176,7 @@ Previously, WebSocket connections failed with **1006 Abnormal Closure** errors b
 | ---------------- | ------------------------ | ------------------------ |
 | **RDS**          | PostgreSQL 16, encrypted | Sessions, jobs, metadata |
 | **S3 Documents** | Versioned, encrypted     | PDF uploads              |
-| **S3 Vectors**   | 1536-dim, cosine metric  | Vector embeddings        |
+| **S3 Vectors**   | 1024-dim, cosine metric  | Vector embeddings        |
 
 ---
 

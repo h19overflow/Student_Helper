@@ -23,6 +23,17 @@ A production-grade **Retrieval-Augmented Generation (RAG)** application that ena
 - Grounded answers with source citations
 - Deterministic responses for reproducibility
 
+🎨 **Visual Knowledge Generation**
+- AI-generated concept diagrams from chat responses
+- LangGraph 4-node pipeline for diagram creation
+- S3 persistence with presigned URL delivery
+- Session-scoped image management
+
+📚 **Course Integration**
+- Link sessions to academic courses
+- Course-based document organization
+- Flexible metadata for course management
+
 📊 **Observability**
 - Distributed tracing with Langfuse
 - Structured JSON logging
@@ -82,7 +93,7 @@ flowchart TB
         subgraph Storage["📁 S3 STORAGE"]
             S3Front["📄 Frontend<br/>React SPA"]
             S3Docs["📑 Documents<br/>PDF Uploads"]
-            S3Vec["🧮 Vectors<br/>1536-dim"]
+            S3Vec["🧮 Vectors<br/>1024-dim"]
         end
         subgraph Messaging["📬 MESSAGING"]
             SQS["📬 SQS Queue"]
@@ -91,8 +102,8 @@ flowchart TB
     end
 
     subgraph External["☁️ AWS SERVICES & EXTERNAL APIs"]
-        Bedrock["🤖 Bedrock<br/>Titan Embeddings"]
-        GoogleAI["🔍 Google AI<br/>LLM Chat"]
+        GoogleEmbed["🧠 Google AI<br/>Embeddings (1024-dim)"]
+        Bedrock["🤖 Bedrock<br/>Claude LLM"]
     end
 
     User -->|HTTPS| CF_TLS
@@ -108,15 +119,15 @@ flowchart TB
     EC2 -->|SendMessage| SQS
     EC2 -.->|HTTPS| VPCEndpoints
     VPCEndpoints --> Bedrock
-    EC2 -->|HTTPS<br/>via NAT| GoogleAI
+    EC2 -->|HTTPS<br/>via NAT| GoogleEmbed
     SQS -->|Event| Lambda
     Lambda -->|GET/PUT| S3Docs
     Lambda -->|PUT| S3Vec
 ```
 
 **Key Design Decisions:**
-- **Bedrock Titan** for embeddings (via VPC endpoints—private network)
-- **Google AI** for LLM chat (via NAT gateway—internet egress)
+- **Google Generative AI** for embeddings (1024-dim, via NAT gateway—eliminates Bedrock throttling)
+- **AWS Bedrock Claude** for LLM inference (via VPC endpoints—private network)
 - **CloudFront → API Gateway → VPC Link → ALB → EC2** routing chain (unified domain, no CORS)
 - **Multi-AZ RDS** for resilience, **SQS + Lambda** for async processing
 - **Least-privilege Security Groups** (see below)
@@ -395,7 +406,8 @@ Student_Helper/
 | **ORM** | SQLAlchemy 2.0 | Type-safe database operations |
 | **Vector Store** | FAISS (dev) / S3 Vectors (prod) | Semantic search & embeddings |
 | **LLM** | AWS Bedrock Claude Haiku | LLM inference |
-| **Embeddings** | Bedrock Titan v2 (1536-dim) | Vector generation |
+| **Embeddings** | Google Generative AI (1024-dim) | Vector generation |
+| **Visual Knowledge** | LangGraph + Gemini | AI-generated diagrams |
 | **Document Parsing** | Docling | PDF/DOCX extraction |
 | **Text Chunking** | LangChain | Semantic text splitting |
 | **Validation** | Pydantic v2 | Request/response schemas |
@@ -431,15 +443,19 @@ Student_Helper/
 
 | Method | Path | Purpose | Status |
 |--------|------|---------|--------|
-| POST | `/sessions` | Create session | 🔨 Scaffold |
+| POST | `/sessions` | Create session | ✅ Implemented |
+| GET | `/sessions` | List sessions | ✅ Implemented |
+| DELETE | `/sessions/{id}` | Delete session | ✅ Implemented |
 | POST | `/sessions/{id}/chat` | Chat with RAG | ✅ Implemented |
+| POST | `/sessions/{id}/chat/stream` | Stream chat (SSE) | ✅ Implemented |
 | GET | `/sessions/{id}/docs` | List documents | ✅ Implemented |
 | POST | `/sessions/{id}/docs` | Upload documents | ✅ Implemented |
-| POST | `/sessions/{id}/diagram` | Generate diagram | 🔨 Scaffold |
+| DELETE | `/sessions/{id}/docs/{doc_id}` | Delete document | ✅ Implemented |
+| POST | `/sessions/{id}/visual-knowledge` | Generate visual diagram | ✅ Implemented |
+| GET | `/sessions/{id}/images` | Get session images | ✅ Implemented |
+| POST | `/courses` | Create/manage courses | ✅ Implemented |
 | GET | `/jobs/{id}` | Poll job status | ✅ Implemented |
-| GET | `/health` | Health check | 🔨 Scaffold |
-| GET | `/health/db` | Database health | 🔨 Scaffold |
-| GET | `/health/vector-store` | Vector store health | 🔨 Scaffold |
+| GET | `/health` | Health check | ✅ Implemented |
 
 **Interactive API Docs:** [Swagger UI](http://localhost:8000/docs)
 
@@ -682,32 +698,34 @@ Contributions are welcome! Please follow these guidelines:
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Chat Q&A | ✅ Complete | RAG with citations working |
-| Document Upload | ✅ Complete | Async with progress tracking |
-| Session Management | 🔨 In Progress | CRUD scaffolded |
-| Diagram Generation | 🔨 In Progress | Interface defined |
-| Health Checks | 🔨 In Progress | Endpoints scaffolded |
-| Tests | 📋 Pending | Unit + integration tests needed |
+| Chat Q&A | ✅ Complete | RAG with citations, streaming support |
+| Document Upload | ✅ Complete | Async S3→SQS→Lambda pipeline |
+| Document Deletion | ✅ Complete | Cascading vector + DB cleanup |
+| Session Management | ✅ Complete | Full CRUD operations |
+| Visual Knowledge | ✅ Complete | LangGraph pipeline with Gemini |
+| Course Integration | ✅ Complete | Course-session linking |
+| Health Checks | ✅ Complete | App health endpoint |
+| Tests | 🔨 In Progress | Unit + integration tests |
 | Documentation | ✅ Complete | All modules documented |
 
 ---
 
 ## 🗺️ Roadmap
 
-### Phase 1 (Current)
+### Phase 1 (Complete)
 - ✅ Core RAG functionality
-- ✅ Document management
+- ✅ Document management (upload, delete)
 - ✅ Session isolation
-- 🔨 Complete scaffolded endpoints
+- ✅ Visual knowledge generation
+- ✅ Course integration
 
-### Phase 2 (Next)
-- 📋 Diagram generation (Mermaid)
-- 📋 Advanced search filters
+### Phase 2 (Current)
+- 🔨 Advanced search filters
+- 🔨 User authentication
 - 📋 Document collections
-- 📋 User authentication
+- 📋 Multi-document insights
 
 ### Phase 3 (Future)
-- 📋 Multi-document insights
 - 📋 Study recommendations
 - 📋 Performance analytics
 - 📋 Mobile app

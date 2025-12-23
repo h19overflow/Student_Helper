@@ -359,7 +359,7 @@ class FAISSStore:
 **Key Features:**
 
 - Persists to `.faiss_index/` directory
-- Bedrock Titan embeddings (768-dim)
+- Google Generative AI embeddings (1024-dim)
 - Metadata filtering via LangChain
 - Deterministic chunk IDs for idempotency
 

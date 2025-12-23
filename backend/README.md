@@ -26,12 +26,12 @@ graph TB
     end
 
     subgraph HTTP["HTTP API Layer (api/)"]
-        Routes["7 Routers<br/>Chat, ChatStream, Sessions, Documents, Jobs,<br/>Visual Knowledge, Health"]
+        Routes["8 Routers<br/>Chat, Sessions, Documents, Jobs,<br/>Visual Knowledge, Courses, Health"]
         Schemas["Pydantic DTOs<br/>Request/Response Schemas"]
     end
 
     subgraph App["Application Layer (application/)"]
-        Services["5 Services<br/>Chat, Document, Job, Session, Diagram"]
+        Services["6 Services<br/>Chat, Document, Job, Session, VisualKnowledge, Course"]
         Adapters["Adapters<br/>ChatHistory, DiagramGenerator"]
     end
 
@@ -290,17 +290,17 @@ images
 
 ### Router Organization
 
-The API layer is organized into **7 dedicated routers**, each with a single responsibility:
+The API layer is organized into **8 dedicated routers**, each with a single responsibility:
 
 | Router | Module | Responsibilities |
 |--------|--------|------------------|
 | **Chat** | `routers/chat.py` | Send messages, stream responses |
-| **ChatStream** | `routers/chat_stream.py` | WebSocket streaming (legacy) |
 | **Sessions** | `routers/sessions.py` | Session CRUD, chat history retrieval |
-| **Documents** | `routers/documents.py` | Upload, list, manage documents |
+| **Documents** | `routers/documents.py` | Upload, list, delete documents |
 | **Jobs** | `routers/jobs.py` | Poll async job status |
 | **Visual Knowledge** | `routers/visual_knowledge.py` | Generate interactive concept diagrams |
-| **Health** | `routers/health.py` | Health checks for app, DB, vector store |
+| **Courses** | `routers/courses.py` | Course CRUD, session-course linking |
+| **Health** | `routers/health.py` | Health checks for app |
 
 ### Endpoints
 
@@ -318,10 +318,12 @@ The API layer is organized into **7 dedicated routers**, each with a single resp
 | GET | `/sessions/{id}/images` | visual_knowledge | Get all images for session (session resume) | ✅ Implemented |
 | GET | `/sessions/{id}/docs` | documents | List documents | ✅ Implemented |
 | POST | `/sessions/{id}/docs` | documents | Upload documents (async) | ✅ Implemented |
+| DELETE | `/sessions/{id}/docs/{doc_id}` | documents | Delete document | ✅ Implemented |
+| POST | `/courses` | courses | Create course | ✅ Implemented |
+| GET | `/courses` | courses | List courses | ✅ Implemented |
+| GET | `/courses/{id}` | courses | Get course details | ✅ Implemented |
 | GET | `/jobs/{id}` | jobs | Poll job status | ✅ Implemented |
-| GET | `/health` | health | Application health | Scaffold |
-| GET | `/health/db` | health | Database health | Scaffold |
-| GET | `/health/vector-store` | health | Vector store health | Scaffold |
+| GET | `/health` | health | Application health | ✅ Implemented |
 
 ---
 
@@ -540,15 +542,11 @@ return {"job_id": job.id, "status": "pending"}
 
 | Issue | Severity | Module | Status |
 |-------|----------|--------|--------|
-| SessionService incomplete | Medium | application/services/ | Scaffold |
-| DiagramService incomplete | Medium | application/services/ | Scaffold |
-| Health endpoints empty | Low | api/routers/ | Scaffold |
 | FAISSStore per-request | Medium | api/deps/ | Inefficient |
 | Vector store config hardcoded | Medium | api/deps/ | Should use settings |
 | Middleware implementations | Medium | observability/ | Pass statements |
 | Logger implementation | Medium | observability/ | Pass statements |
 | Chat history async | Low | boundary/db/CRUD/ | Uses psycopg (sync) |
-| Lambda handler TODOs | Medium | core/document_processing/ | Incomplete |
 
 ---
 
@@ -572,7 +570,8 @@ return {"job_id": job.id, "status": "pending"}
 | ORM | SQLAlchemy 2.0 | Async database operations |
 | Vector Store | FAISS (dev) / S3 Vectors (prod) | Semantic search |
 | LLM | AWS Bedrock Claude Haiku | Inference |
-| Embeddings | Bedrock Titan v2 | Vector generation |
+| Embeddings | Google Generative AI (1024-dim) | Vector generation |
+| Visual Knowledge | LangGraph + Gemini | Concept diagrams |
 | Parsing | Docling | Document extraction |
 | Chunking | LangChain RecursiveCharacterTextSplitter | Text splitting |
 | Validation | Pydantic v2 | Request/response schemas |
@@ -684,4 +683,4 @@ CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0"]
 ---
 
 *Generated documentation for Student Helper RAG application*
-**Last Updated:** 2025-12-20
+**Last Updated:** 2025-12-23

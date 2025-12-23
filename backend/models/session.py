@@ -22,6 +22,7 @@ class SessionResponse(BaseModel):
     """Response schema for session operations."""
 
     id: uuid.UUID
+    course_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
     metadata: dict

@@ -12,6 +12,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.boundary.db.CRUD.session_crud import session_crud
+from backend.boundary.db.CRUD.course_crud import course_crud
 
 
 class SessionService:
@@ -26,22 +27,35 @@ class SessionService:
         """
         self.db = db
 
-    async def create_session(self, metadata: dict) -> UUID:
+    async def create_session(
+        self,
+        metadata: dict,
+        course_id: UUID | None = None
+    ) -> UUID:
         """
-        Create new session with optional metadata.
+        Create new session with optional metadata and course context.
 
         Args:
             metadata: Session metadata dict
+            course_id: Optional parent course ID
 
         Returns:
             UUID: Created session ID
 
         Raises:
+            ValueError: If course_id provided but course not found
             Exception: If database operation fails
         """
+        # Validate course exists if course_id provided
+        if course_id is not None:
+            course = await course_crud.get_by_id(self.db, course_id)
+            if not course:
+                raise ValueError(f"Course {course_id} does not exist")
+
         session = await session_crud.create(
             self.db,
-            session_metadata=metadata
+            session_metadata=metadata,
+            course_id=course_id
         )
         return session.id
 
@@ -53,7 +67,7 @@ class SessionService:
             session_id: Session UUID
 
         Returns:
-            dict: Session data with id, metadata, created_at, updated_at
+            dict: Session data with id, course_id, metadata, created_at, updated_at
 
         Raises:
             ValueError: If session not found
@@ -65,6 +79,7 @@ class SessionService:
 
         return {
             "id": session.id,
+            "course_id": session.course_id,
             "metadata": session.session_metadata,
             "created_at": session.created_at,
             "updated_at": session.updated_at,
@@ -83,7 +98,7 @@ class SessionService:
             offset: Number of sessions to skip
 
         Returns:
-            list[dict]: List of session dicts
+            list[dict]: List of session dicts with course context
         """
         sessions = await session_crud.get_all(
             self.db,
@@ -94,6 +109,7 @@ class SessionService:
         return [
             {
                 "id": s.id,
+                "course_id": s.course_id,
                 "metadata": s.session_metadata,
                 "created_at": s.created_at,
                 "updated_at": s.updated_at,

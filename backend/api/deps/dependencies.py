@@ -21,6 +21,7 @@ from backend.application.services import (
     JobService,
     SessionService,
 )
+from backend.application.services.course_service import CourseService
 from backend.application.services.visual_knowledge_service import (
     VisualKnowledgeService,
 )
@@ -43,6 +44,19 @@ def get_session_service(db: AsyncSession = Depends(get_async_db)) -> SessionServ
         SessionService: Session service instance
     """
     return SessionService(db=db)
+
+
+def get_course_service(db: AsyncSession = Depends(get_async_db)) -> CourseService:
+    """
+    Get course service instance.
+
+    Args:
+        db: Async database session (injected via Depends)
+
+    Returns:
+        CourseService: Course service instance
+    """
+    return CourseService(db=db)
 
 
 def get_document_service(db: AsyncSession = Depends(get_async_db)) -> DocumentService:

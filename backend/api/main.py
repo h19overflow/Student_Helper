@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.observability.middleware import CorrelationMiddleware, LangfuseMiddleware
 from .routers import (
+    courses_router,
     documents_router,
     health_router,
     jobs_router,
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     # Register all routers
     app.include_router(health_router)
     app.include_router(sessions_router)
+    app.include_router(courses_router, prefix="/api/v1")
     app.include_router(documents_router)
     app.include_router(jobs_router)
 

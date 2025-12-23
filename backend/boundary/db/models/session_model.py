@@ -8,7 +8,8 @@ Dependencies: sqlalchemy, backend.boundary.db.base
 System role: Session persistence for chat context management
 """
 
-from sqlalchemy import String, JSON
+from uuid import UUID
+from sqlalchemy import String, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.boundary.db.base import Base, UUIDMixin, TimestampMixin
@@ -45,7 +46,19 @@ class SessionModel(Base, UUIDMixin, TimestampMixin):
         doc="Flexible session metadata (user info, preferences, etc.)",
     )
 
+    course_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("courses.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+        doc="Parent course ID (optional, for course-based sessions)"
+    )
+
     # Relationships
+    course = relationship(
+        "CourseModel",
+        back_populates="sessions",
+        foreign_keys=[course_id]
+    )
     documents = relationship(
         "DocumentModel",
         back_populates="session",

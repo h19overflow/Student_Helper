@@ -14,8 +14,8 @@ wheels/
 # Project-specific
 CLAUDE.md
 
-# Deployment scripts
-# backend/scripts/
+# Deployment scripts (contain secrets)
+backend/scripts/ec2-setup.sh
 
 # Evaluation artifacts (development only, not for production)
 backend/evaluation/results/

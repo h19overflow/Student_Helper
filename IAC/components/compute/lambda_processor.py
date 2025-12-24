@@ -45,7 +45,7 @@ class LambdaProcessorComponent(pulumi.ComponentResource):
         secrets_arn: pulumi.Input[str],
         ecr_image_uri: pulumi.Input[str],
         database_url: pulumi.Input[str],
-        aws_region: pulumi.Input[str],
+        db_secret_arn: pulumi.Input[str],
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("custom:compute:LambdaProcessor", name, None, opts)
@@ -68,10 +68,10 @@ class LambdaProcessorComponent(pulumi.ComponentResource):
             role=role_arn,
             # Use container image instead of ZIP deployment
             image_uri=ecr_image_uri,
-            image_config=aws.lambda_.ImageConfigArgs(
+            image_config=aws.lambda_.FunctionImageConfigArgs(
                 # Handler is embedded in Dockerfile CMD
                 # but we can override if needed
-                command=["backend.core.document_processing.lambda_handler.handler"],
+                commands=["backend.core.document_processing.lambda_handler.handler"],
             ),
             memory_size=config.lambda_memory,
             timeout=config.lambda_timeout,
@@ -86,7 +86,8 @@ class LambdaProcessorComponent(pulumi.ComponentResource):
                     "VECTORS_BUCKET": vectors_bucket_name,
                     "SECRETS_ARN": secrets_arn,
                     "DATABASE_URL": database_url,
-                    "AWS_REGION": aws_region,
+                    "DB_SECRET_ARN": db_secret_arn,
+                    # Note: AWS_REGION is automatically provided by Lambda runtime
                     "LOG_LEVEL": "INFO",
                 },
             ),

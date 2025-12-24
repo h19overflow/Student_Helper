@@ -55,6 +55,7 @@ def get_async_engine():
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
+        connect_args={"ssl": "require"},
     )
 
 
@@ -85,6 +86,56 @@ class DocumentStatusUpdater:
             db_session: AsyncSession for RDS
         """
         self.db = db_session
+
+    async def create_document(
+        self,
+        document_id: str,
+        session_id: str,
+        name: str,
+        s3_key: str,
+    ) -> None:
+        """
+        Create a new document record in RDS.
+        
+        Args:
+            document_id: Document UUID
+            session_id: Session UUID
+            name: Filename
+            s3_key: S3 object key (stored in upload_url)
+        """
+        try:
+            from sqlalchemy import text
+            
+            stmt = text("""
+                INSERT INTO documents (
+                    id, session_id, name, status, upload_url, created_at, updated_at
+                ) VALUES (
+                    :id, :session_id, :name, :status, :upload_url, NOW(), NOW()
+                )
+            """)
+            
+            await self.db.execute(
+                stmt,
+                {
+                    "id": document_id,
+                    "session_id": session_id,
+                    "name": name,
+                    "status": DocumentStatus.PROCESSING.value,
+                    "upload_url": s3_key,
+                },
+            )
+            await self.db.commit()
+            
+            logger.info(
+                f"{__name__}:create_document - Document created",
+                extra={"document_id": document_id, "session_id": session_id},
+            )
+
+        except Exception as e:
+            logger.error(f"{__name__}:create_document - {type(e).__name__}: {e}")
+            await self.db.rollback()
+            raise
+
 
     async def mark_processing(self, document_id: str) -> None:
         """

@@ -32,8 +32,8 @@ class DocumentPipelineSettings(BaseSettings):
         description="Unused - kept for backwards compatibility",
     )
     embedding_model_id: str = Field(
-        default="text-embedding-004",
-        description="Google Gemini embedding model ID (1024 dimensions)",
+        default="models/gemini-embedding-001",
+        description="Google Gemini embedding model ID (1024 dimensions for S3 Vectors)",
     )
 
     # Chunking settings

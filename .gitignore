@@ -22,7 +22,8 @@ backend/evaluation/results/
 backend/evaluation/baselines/
 backend/evaluation/experiments/
 *.evaluation.json
-# Markdown files (except READMEs)
+# Markdown files (except READMEs and documentation)
 *.md
 !README.md
 !README*.md
+!documentation/**/*.md

@@ -1,11 +1,15 @@
 """
 S3 Vectors store for production retrieval.
 
-Provides retrieval interface using Amazon S3 Vectors with session filtering.
+Provides retrieval interface using Amazon S3 Vectors with metadata filtering.
 Supports session-isolated search and hybrid retrieval preparation.
-Uses Google Gemini embeddings (1024-dimensional) for vector generation.
+Uses Google Generative AI embeddings (1024-dimensional) for vector generation.
 
-Dependencies: langchain_google_genai, langchain_aws, backend.boundary.vdb.vector_schemas, tenacity
+Metadata Keys (matching S3 Vectors index definition):
+- Filterable: session_id, document_id, page_number, chunk_index
+- Non-filterable: text_content
+
+Dependencies: langchain_aws, backend.boundary.vdb.embeddings_wrapper, tenacity
 System role: Production vector store (S3 Vectors)
 """
 
@@ -13,8 +17,8 @@ import logging
 from typing import Any
 
 from botocore.exceptions import ClientError
+from dotenv import load_dotenv
 from langchain_aws.vectorstores import AmazonS3Vectors
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -22,11 +26,13 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
+from backend.boundary.vdb.embeddings_wrapper import FixedDimensionEmbeddings
 from backend.boundary.vdb.vector_schemas import (
     VectorMetadata,
     VectorSearchResult,
 )
 
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +51,8 @@ class S3VectorsStore:
         index_name: str = "documents",
         region: str = "ap-southeast-2",
         embedding_region: str = "us-east-1",
-        embedding_model_id: str = "text-embedding-004",
+        embedding_model_id: str = "models/gemini-embedding-001",
+        embedding_dimension: int = 1024,
     ) -> None:
         """
         Initialize S3 Vectors store with Google Gemini embeddings.
@@ -55,20 +62,24 @@ class S3VectorsStore:
             index_name: Index name within the bucket
             region: AWS region for S3 Vectors
             embedding_region: Unused - kept for backwards compatibility
-            embedding_model_id: Google embedding model ID (default: text-embedding-004)
+            embedding_model_id: Google embedding model ID (default: gemini-embedding-001)
+            embedding_dimension: Output dimension for embeddings (default: 1024)
         """
         self._vectors_bucket = vectors_bucket
         self._index_name = index_name
         self._region = region
 
         logger.info(
-            f"{__name__}:__init__ - Creating GoogleGenerativeAIEmbeddings with model {embedding_model_id}"
+            f"{__name__}:__init__ - Creating FixedDimensionEmbeddings with "
+            f"model={embedding_model_id}, dimension={embedding_dimension}"
         )
 
-        # Use Google Gemini embeddings (dimensionality passed at embedding time, not init)
-        # This avoids Bedrock throttling and matches S3 Vectors 1024-dimensional index
-        self._embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model_id)
-        logger.info(f"{__name__}:__init__ - GoogleGenerativeAIEmbeddings initialized")
+        # Use wrapper that enforces consistent dimensions on all embed calls
+        self._embeddings = FixedDimensionEmbeddings(
+            model=embedding_model_id,
+            output_dimensionality=embedding_dimension,
+        )
+        logger.info(f"{__name__}:__init__ - FixedDimensionEmbeddings initialized")
 
         self._vector_store = AmazonS3Vectors(
             vector_bucket_name=vectors_bucket,
@@ -127,7 +138,7 @@ class S3VectorsStore:
         if session_id:
             filter_dict["session_id"] = session_id
         if doc_id:
-            filter_dict["doc_id"] = doc_id
+            filter_dict["document_id"] = doc_id
 
         try:
             results = self._search_with_retry(

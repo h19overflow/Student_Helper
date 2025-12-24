@@ -19,6 +19,7 @@ Security Principle: All buckets are PRIVATE. Access is granted via IAM Roles (fo
 """
 
 from dataclasses import dataclass
+import json
 
 import pulumi
 import pulumi_aws as aws
@@ -55,6 +56,7 @@ class S3BucketsComponent(pulumi.ComponentResource):
         environment: str,
         namer: ResourceNamer,
         sqs_queue_arn: pulumi.Input[str] | None = None,
+        sqs_queue_url: pulumi.Input[str] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("custom:storage:S3Buckets", name, None, opts)
@@ -106,25 +108,43 @@ class S3BucketsComponent(pulumi.ComponentResource):
         )
 
         # S3 Event Notification to SQS (connects S3 uploads to Lambda processing)
-        if sqs_queue_arn:
+        if sqs_queue_arn and sqs_queue_url:
+            # SQS Queue Policy - allow S3 to send messages to the queue
+            # This MUST exist before the BucketNotification can be created
+            sqs_policy = aws.sqs.QueuePolicy(
+                f"{name}-documents-sqs-policy",
+                queue_url=sqs_queue_url,
+                policy=pulumi.Output.all(
+                    self.documents_bucket.arn,
+                    sqs_queue_arn
+                ).apply(lambda args: json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": {"Service": "s3.amazonaws.com"},
+                        "Action": "sqs:SendMessage",
+                        "Resource": args[1],
+                        "Condition": {
+                            "ArnEquals": {
+                                "aws:SourceArn": args[0]
+                            }
+                        }
+                    }]
+                })),
+                opts=child_opts,
+            )
+
             aws.s3.BucketNotification(
                 f"{name}-documents-to-sqs",
                 bucket=self.documents_bucket.id,
-                queue_notifications=[
-                    aws.s3.BucketNotificationQueueNotificationArgs(
+                queues=[
+                    aws.s3.BucketNotificationQueueArgs(
                         events=["s3:ObjectCreated:*"],
                         queue_arn=sqs_queue_arn,
-                        filter_key=aws.s3.BucketNotificationQueueNotificationFilterKeyArgs(
-                            filter_rules=[
-                                aws.s3.BucketNotificationQueueNotificationFilterKeyFilterRuleArgs(
-                                    name="prefix",
-                                    value="documents/",
-                                )
-                            ]
-                        ),
+                        filter_prefix="sessions/",  # Filter to sessions/ folder
                     )
                 ],
-                opts=child_opts,
+                opts=pulumi.ResourceOptions(parent=self, depends_on=[sqs_policy]),
             )
 
         # S3 Vectors bucket for embeddings storage

@@ -2,4 +2,4 @@ config:
   student-helper-infra:environment: dev
   student-helper-infra:domain: dev.local
   aws-native:region: ap-southeast-2
-  student-helper-infra:storage_only: "true"
+  student-helper-infra:storage_only: "false"

@@ -18,7 +18,6 @@ System role: CI/CD helper for Lambda Docker deployments
 
 import json
 import logging
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -42,9 +41,9 @@ class ECRBuilder:
         self.environment = environment
         self.skip_validation = skip_validation
 
-        # Paths
-        project_root = Path(__file__).parent.parent.parent
-        self.lambda_dir = project_root / "backend" / "core" / "document_processing"
+        # Paths - use project root as Docker build context
+        self.project_root = Path(__file__).parent.parent.parent
+        self.lambda_dir = self.project_root / "backend" / "core" / "document_processing"
         self.dockerfile = self.lambda_dir / "Dockerfile"
 
         # Image configuration
@@ -71,11 +70,13 @@ class ECRBuilder:
                 [
                     "docker",
                     "build",
+                    "--provenance=false",
+                    "--platform=linux/amd64",
                     "-t",
                     self.image_local,
                     "-f",
                     str(self.dockerfile),
-                    str(self.lambda_dir),
+                    str(self.project_root),  # Build context is project root for COPY paths
                 ],
                 check=True,
                 capture_output=True,
@@ -108,16 +109,17 @@ class ECRBuilder:
                     "stack",
                     "output",
                     "-s",
-                    f"student-helper/{self.environment}",
+                    "studdy-buddy" if self.environment == "dev" else self.environment,
                     "--json",
                 ],
                 check=True,
                 capture_output=True,
                 text=True,
+                cwd=str(self.project_root / "IAC"),  # Run in IAC directory
             )
 
             outputs = json.loads(result.stdout)
-            ecr_url = outputs.get("ecr_repository_url")
+            ecr_url = outputs.get("lambda_ecr_repository")  # Matches Pulumi export key
 
             if not ecr_url:
                 logger.error(

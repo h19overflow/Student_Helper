@@ -224,6 +224,7 @@ class IamRolesComponent(pulumi.ComponentResource):
                             "s3vectors:QueryVectors",
                             "s3vectors:DeleteVectors",
                             "s3vectors:ListVectors",
+                            "s3vectors:GetIndex",
                         ],
                         "Resource": ["arn:aws:s3vectors:*:*:*"],
                     },

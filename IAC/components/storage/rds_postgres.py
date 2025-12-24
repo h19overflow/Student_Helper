@@ -29,6 +29,7 @@ class RdsOutputs:
     endpoint: pulumi.Output[str]
     port: pulumi.Output[int]
     database_name: pulumi.Output[str]
+    master_user_secret_arn: pulumi.Output[str]
 
 
 class RdsPostgresComponent(pulumi.ComponentResource):
@@ -109,6 +110,9 @@ class RdsPostgresComponent(pulumi.ComponentResource):
             "endpoint": self.instance.endpoint,
             "port": self.instance.port,
             "database_name": db_name,
+            "master_user_secret_arn": self.instance.master_user_secrets.apply(
+                lambda s: s[0].secret_arn if s else ""
+            ),
         })
 
     def get_outputs(self) -> RdsOutputs:
@@ -117,4 +121,7 @@ class RdsPostgresComponent(pulumi.ComponentResource):
             endpoint=self.instance.endpoint,
             port=self.instance.port,
             database_name=pulumi.Output.from_input("studenthelper"),
+            master_user_secret_arn=self.instance.master_user_secrets.apply(
+                lambda s: s[0].secret_arn if s else ""
+            ),
         )

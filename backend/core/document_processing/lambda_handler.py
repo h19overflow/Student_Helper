@@ -16,12 +16,17 @@ System role: Lambda entry point for async document ingestion
 """
 
 import asyncio
+import boto3
 import json
 import logging
 import os
 import uuid
 from typing import Any, Dict
 from urllib.parse import unquote
+from dotenv import load_dotenv
+
+# Load environment variables from .env if present
+load_dotenv()
 
 from .models.sqs_event import SQSEventSchema
 from .entrypoint import DocumentPipeline
@@ -103,13 +108,18 @@ def parse_s3_event_record(record: Dict[str, Any]) -> SQSEventSchema:
             raise ValueError("Missing S3 object key")
 
         # Extract session_id and filename from S3 key path
-        # Expected format: documents/{session_id}/{filename}
+        # Format 1 (New): sessions/{session_id}/documents/{filename}
+        # Format 2 (Legacy): documents/{session_id}/{filename}
         parts = s3_key.split("/")
-        if len(parts) < 3 or parts[0] != "documents":
-            raise ValueError(f"Invalid S3 key format: {s3_key}")
 
-        session_id = parts[1]
-        filename = "/".join(parts[2:])  # Handle filenames with slashes
+        if len(parts) >= 4 and parts[0] == "sessions" and parts[2] == "documents":
+            session_id = parts[1]
+            filename = "/".join(parts[3:])
+        elif len(parts) >= 3 and parts[0] == "documents":
+            session_id = parts[1]
+            filename = "/".join(parts[2:])
+        else:
+            raise MessageParseError(f"Skipping non-document object: {s3_key}")
 
         # Validate session_id is a valid UUID
         try:
@@ -227,6 +237,66 @@ def validate_environment() -> Dict[str, str]:
     return env_config
 
 
+def _configure_secrets() -> None:
+    """
+    Fetch access secrets from Secrets Manager and update environment.
+    
+    1. Replaces 'placeholder' in DATABASE_URL with actual password.
+    2. Sets GOOGLE_API_KEY from SECRETS_ARN.
+    """
+    session = boto3.session.Session()
+    client = session.client("secretsmanager")
+    
+    # 1. Configure Database Password
+    db_url = os.getenv("DATABASE_URL", "")
+    db_secret_arn = os.getenv("DB_SECRET_ARN")
+    
+    if "placeholder" in db_url and db_secret_arn:
+        try:
+            response = client.get_secret_value(SecretId=db_secret_arn)
+            if "SecretString" in response:
+                secret = json.loads(response["SecretString"])
+                password = secret.get("password")
+                
+                if password:
+                    from urllib.parse import quote_plus
+                    safe_password = quote_plus(password)
+                    new_url = db_url.replace("placeholder", safe_password)
+                    os.environ["DATABASE_URL"] = new_url
+                    logger.info("%s:_configure_secrets - Updated DATABASE_URL with secret", __name__)
+        except Exception as e:
+            logger.error("%s:_configure_secrets - Failed to fetch DB secret: %s", __name__, e)
+
+    # 2. Configure Google API Key
+    google_secret_arn = os.getenv("SECRETS_ARN")
+    if google_secret_arn:
+        try:
+            response = client.get_secret_value(SecretId=google_secret_arn)
+            if "SecretString" in response:
+                secret = json.loads(response["SecretString"])
+                api_key = secret.get("api_key")
+                
+                if api_key and api_key != "PLACEHOLDER_SET_VIA_CLI":
+                    os.environ["GOOGLE_API_KEY"] = api_key
+                    os.environ["GEMINI_API_KEY"] = api_key
+                    logger.info("%s:_configure_secrets - Set GOOGLE_API_KEY from secret", __name__)
+                else:
+                    logger.warning("%s:_configure_secrets - Google API Key is missing or placeholder", __name__)
+        except Exception as e:
+            logger.error("%s:_configure_secrets - Failed to fetch Google API Key: %s", __name__, e)
+
+
+
+async def _create_document_record(
+    document_id: str, session_id: str, name: str, s3_key: str
+) -> None:
+    """Create document record in RDS."""
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        updater = DocumentStatusUpdater(session)
+        await updater.create_document(document_id, session_id, name, s3_key)
+
+
 async def _update_status_processing(document_id: str) -> None:
     """Update document status to PROCESSING in RDS."""
     session_factory = get_async_session_factory()
@@ -271,6 +341,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         extra={"record_count": len(event.get("Records", []))},
     )
 
+    # Configure DB authentication (fetch secret)
+    _configure_secrets()
+
     # Validate environment at start
     try:
         _env_config = validate_environment()  # noqa: F841
@@ -302,9 +375,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 },
             )
 
-            # Update status to PROCESSING before pipeline starts
+            # Create document record in RDS (status=PROCESSING)
             try:
-                asyncio.run(_update_status_processing(document_id))
+                asyncio.run(
+                    _create_document_record(
+                        document_id,
+                        str(message.session_id),
+                        message.filename,
+                        message.s3_key,
+                    )
+                )
             except Exception as e:
                 logger.error(
                     "%s:handler - Failed to update status to PROCESSING: %s: %s",

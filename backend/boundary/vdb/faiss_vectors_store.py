@@ -5,7 +5,7 @@ Provides same interface as S3VectorsStore but uses local FAISS index.
 Supports session filtering and metadata-based retrieval.
 Uses Google Gemini embeddings for consistency with production.
 
-Dependencies: faiss-cpu, langchain_google_genai, backend.boundary.vdb.vector_schemas
+Dependencies: faiss-cpu, backend.boundary.vdb.embeddings_wrapper, backend.boundary.vdb.vector_schemas
 System role: Local vector store for development RAG
 """
 
@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
+from backend.boundary.vdb.embeddings_wrapper import FixedDimensionEmbeddings
 from backend.boundary.vdb.vector_schemas import (
     VectorMetadata,
     VectorSearchResult,
@@ -23,9 +23,10 @@ from backend.boundary.vdb.vector_schemas import (
 
 logger = logging.getLogger(__name__)
 
-# Local index path
-FAISS_INDEX_DIR = Path(".faiss_index")
-FAISS_INDEX_DIR.mkdir(exist_ok=True)
+# Local index path - use /tmp in production for Docker compatibility
+# The directory is created lazily in __init__ to avoid permission errors at import time
+import os
+FAISS_INDEX_DIR = Path(os.getenv("FAISS_INDEX_DIR", "/tmp/.faiss_index"))
 
 
 class FAISSVectorsStore:
@@ -42,7 +43,8 @@ class FAISSVectorsStore:
         index_name: str = "local-dev",
         region: str = "ap-southeast-2",
         embedding_region: str = "us-east-1",
-        embedding_model_id: str = "text-embedding-004",
+        embedding_model_id: str = "models/gemini-embedding-001",
+        embedding_dimension: int = 1024,
     ) -> None:
         """
         Initialize FAISS vector store with Google Gemini embeddings.
@@ -51,19 +53,26 @@ class FAISSVectorsStore:
             index_name: Local index name
             region: AWS region (used for consistency, not needed for FAISS)
             embedding_region: Unused - kept for backwards compatibility
-            embedding_model_id: Google embedding model ID (default: text-embedding-004)
+            embedding_model_id: Google embedding model ID (default: gemini-embedding-001)
+            embedding_dimension: Output dimension for embeddings (default: 1024)
         """
         self._index_name = index_name
         self._region = region
 
         logger.info(
-            f"{__name__}:__init__ - Creating GoogleGenerativeAIEmbeddings with model {embedding_model_id}"
+            f"{__name__}:__init__ - Creating FixedDimensionEmbeddings with "
+            f"model={embedding_model_id}, dimension={embedding_dimension}"
         )
 
-        # Use Google Gemini embeddings (dimensionality passed at embedding time, not init)
-        # This matches the S3 Vectors index dimension
-        self._embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model_id)
-        logger.info(f"{__name__}:__init__ - GoogleGenerativeAIEmbeddings initialized")
+        # Use wrapper that enforces consistent dimensions on all embed calls
+        self._embeddings = FixedDimensionEmbeddings(
+            model=embedding_model_id,
+            output_dimensionality=embedding_dimension,
+        )
+        logger.info(f"{__name__}:__init__ - FixedDimensionEmbeddings initialized")
+
+        # Create index directory if it doesn't exist
+        FAISS_INDEX_DIR.mkdir(parents=True, exist_ok=True)
 
         # Load or initialize FAISS index
         self._vector_store = self._load_or_create_index()

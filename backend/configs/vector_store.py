@@ -27,12 +27,12 @@ class VectorStoreSettings(BaseSettings):
     index_name: str = Field(default="documents", description="S3 Vectors index name")
 
     embedding_model: str = Field(
-        default="text-embedding-004",
-        description="Google Gemini embedding model ID",
+        default="models/gemini-embedding-001",
+        description="Google Gemini embedding model ID (gemini-embedding-001 supports 1024-dim)",
     )
     embedding_dimension: int = Field(
         default=1024,
-        description="Embedding vector dimension (1024 for Google text-embedding-004)",
+        description="Embedding vector dimension (1024 for S3 Vectors index compatibility)",
     )
 
     top_k: int = Field(default=5, description="Number of top results to retrieve")

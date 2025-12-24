@@ -66,6 +66,7 @@ def _deploy_storage_only(config, namer, base_name: str) -> None:
         environment=config.environment,
         namer=namer,
         sqs_queue_arn=sqs_outputs.queue_arn,
+        sqs_queue_url=sqs_outputs.queue_url,
     )
     s3_outputs = s3_buckets.get_outputs()
 
@@ -93,9 +94,6 @@ def main() -> None:
     config = get_config()
     namer = ResourceNamer(project="student-helper", environment=config.environment)
     base_name = namer.name("")
-
-    # Get AWS region from provider
-    aws_region = aws.get_region().name
 
     # Check if deploying storage only
     pulumi_config = pulumi.Config()
@@ -145,6 +143,7 @@ def main() -> None:
         environment=config.environment,
         namer=namer,
         sqs_queue_arn=sqs_outputs.queue_arn,
+        sqs_queue_url=sqs_outputs.queue_url,
     )
     s3_outputs = s3_buckets.get_outputs()
 
@@ -207,11 +206,9 @@ def main() -> None:
     # Construct database URL for Lambda
     # Format: postgresql+asyncpg://user:password@host:port/dbname
     # Password will be retrieved from Secrets Manager at runtime by Lambda
-    database_url = pulumi.concat(
+    database_url = pulumi.Output.concat(
         "postgresql+asyncpg://postgres:placeholder@",
         rds_outputs.endpoint,
-        ":",
-        rds_outputs.port.apply(str),
         "/",
         rds_outputs.database_name,
     )
@@ -227,9 +224,9 @@ def main() -> None:
         documents_bucket_name=s3_outputs.documents_bucket_name,
         vectors_bucket_name=s3_outputs.vectors_bucket_name,
         secrets_arn=secrets.google_api_key.arn,
-        ecr_image_uri=pulumi.concat(ecr_outputs.repository_url, ":latest"),
+        ecr_image_uri=pulumi.Output.concat(ecr_outputs.repository_url, ":latest"),
         database_url=database_url,
-        aws_region=aws_region,
+        db_secret_arn=rds_outputs.master_user_secret_arn,
     )
     lambda_outputs = lambda_processor.get_outputs()
 

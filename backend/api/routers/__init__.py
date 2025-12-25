@@ -1,8 +1,8 @@
 """API routers."""
 
 from .chat import router as chat_router
-from .courses import router as courses_router
-from .documents import router as documents_router
+from .courses import router as courses_router  # Now imports from courses/ package
+from .documents import router as documents_router  # Now imports from documents/ package
 from .health import router as health_router
 from .jobs import router as jobs_router
 from .sessions import router as sessions_router

@@ -13,13 +13,17 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import logging
 from backend.observability.middleware import CorrelationMiddleware, LangfuseMiddleware
+from backend.api.deps.dependencies import get_service_cache
 from .routers import (
+    chat_router,
     courses_router,
     documents_router,
     health_router,
     jobs_router,
     sessions_router,
+    visual_knowledge_router,
 )
 
 
@@ -30,9 +34,24 @@ async def lifespan(app: FastAPI):
 
     Handles startup and shutdown events.
     """
+    logger = logging.getLogger("uvicorn")
+    
     # Startup
+    logger.info("Pre-warming service cache...")
+    cache = get_service_cache()
+    # Trigger property access to load instances
+    _ = cache.vector_store
+    _ = cache.rag_agent
+    _ = cache.document_pipeline
+    _ = cache.s3_client
+    _ = cache.diagram_service
+    logger.info("Service cache pre-warmed")
+    
     yield
+    
     # Shutdown
+    cache.clear()
+    logger.info("Service cache cleared")
 
 
 def create_app() -> FastAPI:
@@ -65,9 +84,11 @@ def create_app() -> FastAPI:
     # Register all routers with /api/v1 prefix for versioning
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(sessions_router, prefix="/api/v1")
+    app.include_router(chat_router, prefix="/api/v1")
     app.include_router(courses_router, prefix="/api/v1")
     app.include_router(documents_router, prefix="/api/v1")
     app.include_router(jobs_router, prefix="/api/v1")
+    app.include_router(visual_knowledge_router, prefix="/api/v1")
 
     return app
 

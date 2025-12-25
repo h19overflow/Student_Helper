@@ -1,9 +1,13 @@
 """
 Document API endpoints.
 
-Routes: POST /sessions/{id}/docs/presigned-url, POST /sessions/{id}/docs/uploaded, GET /sessions/{id}/docs
+Routes:
+- POST /sessions/{id}/docs/presigned-url - Generate presigned URL for S3 upload
+- POST /sessions/{id}/docs/uploaded - Notify upload completion
+- DELETE /sessions/{id}/docs/{doc_id} - Delete document
+- GET /sessions/{id}/docs - List session documents
 
-Dependencies: backend.application.document_service, backend.models
+Dependencies: backend.application.services, backend.models
 System role: Document HTTP API
 """
 
@@ -12,22 +16,26 @@ from uuid import UUID
 import uuid as uuid_lib
 
 from fastapi import APIRouter, Depends, HTTPException
+
 from backend.api.deps import get_document_service, get_job_service, get_s3_document_client
-from backend.api.routers.router_utils.presigned_url_utils import (
-    FilenameValidationError,
-    generate_safe_s3_key,
-    validate_filename,
-)
 from backend.application.services.document_service import DocumentService
 from backend.application.services.job_service import JobService
 from backend.boundary.aws.s3_client import S3DocumentClient
 from backend.boundary.db.models.job_model import JobType, JobStatus
 from backend.models.document import (
     DocumentListResponse,
+    DocumentResponse,
     DocumentUploadedNotification,
     PresignedUrlRequest,
     PresignedUrlResponse,
 )
+
+from .presigned_url_handler import (
+    FilenameError,
+    S3PresignError,
+    handle_presigned_url_request,
+)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sessions", tags=["documents"])
@@ -55,52 +63,17 @@ async def create_presigned_upload_url(
 
     Raises:
         HTTPException(400): Invalid filename or extension
+        HTTPException(500): Failed to generate URL
     """
-    logger.info(
-        "Presigned URL request received",
-        extra={"session_id": str(session_id), "file_name": request.filename},
-    )
-
     try:
-        # Validate filename
-        validate_filename(request.filename)
-
-        # Generate unique S3 key
-        s3_key = generate_safe_s3_key(str(session_id), request.filename)
-
-        # Generate presigned URL
-        presigned_url, expires_at = s3_client.generate_presigned_url(
-            s3_key=s3_key,
-            content_type=request.content_type,
-        )
-
-        logger.info(
-            "Presigned URL generated",
-            extra={"session_id": str(session_id), "s3_key": s3_key},
-        )
-
-        return PresignedUrlResponse(
-            presigned_url=presigned_url,
-            s3_key=s3_key,
-            expires_at=expires_at.isoformat(),
-            content_type=request.content_type,
-        )
-
-    except FilenameValidationError as e:
-        logger.warning(
-            "Filename validation failed",
-            extra={"session_id": str(session_id), "file_name": request.filename, "error": str(e)},
-        )
+        return handle_presigned_url_request(session_id, request, s3_client)
+    except FilenameError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.exception(
-            "Failed to generate presigned URL",
-            extra={"session_id": str(session_id), "error": str(e)},
-        )
-        raise HTTPException(status_code=500, detail="Failed to generate upload URL")
+    except S3PresignError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{session_id}/docs/uploaded", )
+@router.post("/{session_id}/docs/uploaded")
 async def document_uploaded_to_s3(
     session_id: UUID,
     notification: DocumentUploadedNotification,
@@ -115,7 +88,6 @@ async def document_uploaded_to_s3(
     Args:
         session_id: Session UUID
         notification: S3 key and filename from frontend
-        background_tasks: FastAPI background tasks
         job_service: Injected JobService
 
     Returns:
@@ -246,8 +218,6 @@ async def get_documents(
         )
 
         # Map to response model
-        from backend.models.document import DocumentResponse
-
         documents = [
             DocumentResponse(
                 id=UUID(str(doc.id)),
